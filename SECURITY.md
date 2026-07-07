@@ -29,6 +29,7 @@ We aim to acknowledge reports within 5 business days and will coordinate disclos
 - Keep `.env` files and any generated API keys out of version control (see `.gitignore`).
 - Rotate proxy API keys after installation or suspected compromise.
 - Run extension code only from trusted sources; the extension sandbox and security audit are defense-in-depth, not a guarantee.
+- See [Extension registry provenance](#extension-registry-provenance) for supply-chain limits on installable extensions.
 - **Default bind:** `server.yaml` sets `server.host` to `127.0.0.1`. For LAN access, set `SERVER_HOST=0.0.0.0` or edit `server.yaml` only on trusted networks.
 
 ## Authentication model (ADR 0008)
@@ -51,3 +52,16 @@ Built-in WebUI authentication is **deferred** until a prioritized LAN/multi-user
 
 - Extension install/update/remove/enable/disable routes are part of the WebUI API surface. These routes do **not** require authentication. Run ChironAI only on `localhost` or inside a trusted network, and treat any network that can reach the WebUI as having full extension-management access.
 - Dependency vulnerabilities are monitored via `pip-audit`, `npm audit`, and Trivy image scans documented in `RELEASE.md`.
+
+## Extension registry provenance
+
+ChironAI can install extensions from a configured registry (default: GitHub-hosted JSON) or from local/bundled paths. **There is no full cryptographic signature verification** of third-party extension packages today.
+
+| Risk | Current mitigation |
+|------|------------------|
+| Tampered or malicious registry entries | Blocklist policy (`ExtensionBlocklistPolicy`); manifest validation; install-time security audit |
+| Compromised publisher or repository | Registry metadata + GitHub release/archive resolution; user consent on capability changes (see [`docs/EXTENSIONS_GITHUB_MIGRATION.md`](docs/EXTENSIONS_GITHUB_MIGRATION.md)) |
+| Malicious extension code at runtime | Out-of-process sandbox workers; defense-in-depth only — not a sandbox escape guarantee |
+| Unauthenticated install from LAN | Same as WebUI — bind `127.0.0.1` or restrict network access (ADR 0008) |
+
+**Operator guidance:** treat extension install like running untrusted code. Use the default registry only from trusted networks, review extension permissions and publisher metadata before install, and prefer pinned versions over floating `latest`. Planned hardening (signature verification, immutable artifacts, SBOM) is tracked in [`docs/EXTENSIONS_GITHUB_MIGRATION.md`](docs/EXTENSIONS_GITHUB_MIGRATION.md).

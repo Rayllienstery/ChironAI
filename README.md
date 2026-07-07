@@ -79,7 +79,7 @@ The hexagonal **`rag_service`** package ships with **`chironai_rag`** in **`Core
 ## Platform support
 
 - **Windows 11 + Docker Desktop** — primary development and test environment. This is where the release quality gate and manual smoke tests are run.
-- **Linux / macOS / WSL** — should work via Docker Compose (the runtime image is Debian-based), but I do not personally test there. The CI `linux-fast` job runs a subset of the gate on Ubuntu, so the core backend and Docker build are exercised on Linux. Community feedback and pull requests for other platforms are welcome.
+- **Linux / macOS / WSL** — should work via Docker Compose (the runtime image is Debian-based). CI runs `linux-fast` on Ubuntu (startup smoke + Docker build on tags) and `macos-fast` on macOS (`pytest -m fast`, CoreUI build, CoreUI unit tests). Community feedback and pull requests for other platforms are welcome.
 
 ## Running
 1. Start Qdrant (and any optional services required by your setup).

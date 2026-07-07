@@ -1,6 +1,14 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.30] - 2026-07-07
+### Added
+- `macos-fast` CI job on `macos-latest`: `pytest -m fast`, CoreUI build, and CoreUI unit tests (P1.8/P2.20).
+- Extension registry provenance risks and mitigations in `SECURITY.md` (P1.12).
+
+### Changed
+- `README.md` and `docs/QUALITY_GATE_PROFILES.md` document macOS CI coverage.
+
 ## [0.8.29] - 2026-07-07
 ### Changed
 - Document 38 intentional `except Exception: pass` blocks with `# safe:` comments so `audit_silent_exceptions.py --mode check` passes (P1.9).

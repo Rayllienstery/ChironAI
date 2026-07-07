@@ -81,6 +81,8 @@ Everything in `full`, plus:
 | `startup_smoke_bat.ps1` | advisory with `--include-advisory` | skipped |
 | `mutmut` | advisory; prefer WSL/CI Linux | advisory |
 
+The `macos-fast` workflow job (`.github/workflows/quality.yml`) runs on `macos-latest` for pull requests and `main`/`master` pushes: `pytest -m fast`, CoreUI `npm run build`, and `npm run test:run`.
+
 `scripts/quality_gate.py` sets `PYTHONPATH` for every subprocess step to mirror
 `[tool.pytest.ini_options].pythonpath` (repo root, `Core`, `Core/modules/*`, and
 `CoreModules/*` package roots). This lets advisory `lint-imports` resolve

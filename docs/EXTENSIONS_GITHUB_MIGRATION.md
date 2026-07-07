@@ -13,6 +13,8 @@ Target project release for this migration: `0.5.0`.
 
 This document is the planning and acceptance checklist for the migration. It records the target ownership split between the extension-management module and the core extension host/runtime contracts.
 
+> **Release risk posture (0.8.x):** see [`SECURITY.md`](../SECURITY.md#extension-registry-provenance) for current operator-facing limits (no full package signature verification) and mitigations shipped today.
+
 ## Current State
 
 - The app config now defaults to the GitHub-hosted registry, with `extensions/registry/extensions.json` kept as a local/offline fallback.
