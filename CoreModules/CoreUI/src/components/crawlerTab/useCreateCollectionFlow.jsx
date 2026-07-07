@@ -10,10 +10,43 @@ import {
   getProviderCatalog,
   getRagModelSettings,
 } from "../../services/api";
+import { t } from "../../services/i18n.js";
 import {
   CREATE_COLLECTION_LIVE_ID,
   CREATE_COLLECTION_POLL_INTERVAL_MS,
 } from "./constants";
+
+function collectionDisplayName(name) {
+  const trimmed = String(name || "").trim();
+  return trimmed || t("crawler.modal.collection_default_name");
+}
+
+function formatCollectionIndexedMessage(progress, name) {
+  const duration = progress.elapsed_ms
+    ? t("crawler.notify.collection_indexed_duration", {
+        duration: formatDurationMs(progress.elapsed_ms),
+      })
+    : "";
+  return t("crawler.notify.collection_indexed", {
+    pages: progress.indexed_pages ?? 0,
+    chunks: progress.total_chunks ?? 0,
+    duration,
+    name: collectionDisplayName(name),
+  });
+}
+
+function formatCollectionCreatedAlert(progress) {
+  const duration = progress.elapsed_ms
+    ? t("crawler.notify.collection_indexed_duration", {
+        duration: formatDurationMs(progress.elapsed_ms),
+      })
+    : "";
+  return t("crawler.alert.collection_created", {
+    pages: progress.indexed_pages ?? 0,
+    chunks: progress.total_chunks ?? 0,
+    duration,
+  });
+}
 
 export function useCreateCollectionFlow({
   nc,
@@ -156,15 +189,14 @@ export function useCreateCollectionFlow({
           shouldContinue = false;
           if (nc?.persistNotification && createPersistedJobRef.current !== createJobId) {
             createPersistedJobRef.current = createJobId;
-            const name =
-              createCollectionName || job.collection_name || createForm.collection_name || "Collection";
+            const name = collectionDisplayName(
+              createCollectionName || job.collection_name || createForm.collection_name,
+            );
             nc.persistNotification({
               kind: "event",
               source: "crawler",
-              title: "Collection created",
-              message: `Indexed ${job.indexed_pages ?? 0} pages, ${job.total_chunks ?? 0} chunks${
-                job.elapsed_ms ? ` in ${formatDurationMs(job.elapsed_ms)}` : ""
-              } (${name})`,
+              title: t("crawler.notify.collection_created"),
+              message: formatCollectionIndexedMessage(job, name),
               metadata: createCollectionFinalLogMetadata(nextProgress, createJobId, name),
             });
           }
@@ -185,21 +217,18 @@ export function useCreateCollectionFlow({
           });
           setShowCreateToast(true);
           await loadCollections();
-          alert(
-            `Collection created successfully! Indexed ${job.indexed_pages ?? 0} pages, ${job.total_chunks ?? 0} chunks${
-              job.elapsed_ms ? ` in ${formatDurationMs(job.elapsed_ms)}` : ""
-            }.`,
-          );
+          alert(formatCollectionCreatedAlert(job));
         } else if (job.status === "failed") {
           shouldContinue = false;
           if (nc?.persistNotification && createPersistedJobRef.current !== createJobId) {
             createPersistedJobRef.current = createJobId;
-            const name =
-              createCollectionName || job.collection_name || createForm.collection_name || "Collection";
+            const name = collectionDisplayName(
+              createCollectionName || job.collection_name || createForm.collection_name,
+            );
             nc.persistNotification({
               kind: "error",
               source: "crawler",
-              title: "Collection failed",
+              title: t("crawler.notify.collection_failed"),
               message: String(job.error || "").slice(0, 400),
               metadata: createCollectionFinalLogMetadata(nextProgress, createJobId, name),
             });
@@ -207,7 +236,7 @@ export function useCreateCollectionFlow({
           setCreateJobId(null);
           setCreating(false);
           setCreateCanceling(false);
-          setError(job.error || "Collection creation failed");
+          setError(job.error || t("crawler.modal.collection_failed"));
         } else if (job.status === "cancelled") {
           shouldContinue = false;
           setCreateJobId(null);
@@ -279,18 +308,20 @@ export function useCreateCollectionFlow({
     if (st !== "success" && st !== "failed") return;
     if (createPersistedJobRef.current === createJobId) return;
     createPersistedJobRef.current = createJobId;
-    const name =
-      createCollectionName || createForm.collection_name || "Collection";
+    const name = collectionDisplayName(
+      createCollectionName || createForm.collection_name,
+    );
     nc.persistNotification({
       kind: st === "failed" ? "error" : "event",
       source: "crawler",
-      title: st === "success" ? "Collection created" : "Collection failed",
+      title:
+        st === "success"
+          ? t("crawler.notify.collection_created")
+          : t("crawler.notify.collection_failed"),
       message:
         st === "failed"
           ? String(createProgress.error || "").slice(0, 400)
-          : `Indexed ${createProgress.indexed_pages ?? 0} pages, ${createProgress.total_chunks ?? 0} chunks${
-              createProgress.elapsed_ms ? ` in ${formatDurationMs(createProgress.elapsed_ms)}` : ""
-            } (${name})`,
+          : formatCollectionIndexedMessage(createProgress, name),
       metadata: createCollectionFinalLogMetadata(createProgress, createJobId, name),
     });
   }, [
@@ -302,11 +333,11 @@ export function useCreateCollectionFlow({
   ]);
   const handleCreateCollection = async () => {
     if (!createForm.collection_name.trim()) {
-      setError("Collection name is required");
+      setError(t("crawler.error.collection_name_required"));
       return;
     }
     if (createForm.source_ids.length === 0) {
-      setError("At least one source must be selected");
+      setError(t("crawler.error.collection_sources_required"));
       return;
     }
 
@@ -360,7 +391,7 @@ export function useCreateCollectionFlow({
             parallel_embed_workers: 4,
         });
         await loadCollections();
-        alert("Collection created successfully!");
+        alert(t("crawler.alert.collection_created_simple"));
         setCreating(false);
         setShowCreateToast(false);
         setCreateProgress(null);
@@ -395,16 +426,16 @@ export function useCreateCollectionFlow({
     setShowCreateToast(true);
     setShowCreateModal(true);
   }, [nc]);
-  const createCollectionToastName =
-    createCollectionName || createForm.collection_name || "Collection";
-  const createCollectionToastTitle =
-    createProgress?.status === "success"
-      ? "Collection created"
-      : createProgress?.status === "failed"
-        ? "Collection failed"
-        : createProgress?.status === "cancelled"
-          ? "Collection cancelled"
-          : "Creating collection...";
+  const createCollectionToastName = collectionDisplayName(
+    createCollectionName || createForm.collection_name,
+  );
+  const createCollectionToastTitle = (() => {
+    const status = createProgress?.status;
+    if (status === "success") return t("crawler.notify.collection_created");
+    if (status === "failed") return t("crawler.notify.collection_failed");
+    if (status === "cancelled") return t("crawler.notify.collection_cancelled");
+    return t("crawler.notify.creating_collection");
+  })();
   const createCollectionLiveSuppressed =
     nc?.liveSuppressedIds?.includes(CREATE_COLLECTION_LIVE_ID) || false;
   const showCreateCollectionDetailsAction =
@@ -439,7 +470,7 @@ export function useCreateCollectionFlow({
         {createProgress.status === "failed" && (
           <div className="create-collection-toast-text create-collection-index-error-banner">
             {(createProgress.error && String(createProgress.error).slice(0, 400)) ||
-              "Collection creation failed."}
+              t("crawler.modal.collection_failed")}
           </div>
         )}
         <CreateCollectionIndexProgress

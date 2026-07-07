@@ -100,12 +100,20 @@ export function useCrawlerSection({ nc, activeSection }) {
       nc.persistNotification({
         kind: r.success ? "event" : "error",
         source: "crawler",
-        title: r.success ? "Crawl finished" : "Crawl failed",
+        title: r.success
+          ? t("crawler.notify.crawl_finished")
+          : t("crawler.notify.crawl_failed"),
         message: r.success
-          ? `Source: ${srcLabel}`
-          : `${srcLabel}: ${String(
-              r.error || `exit ${r.returnCode ?? "?"}`,
-            ).slice(0, 400)}`,
+          ? t("crawler.notify.crawl_source", { id: srcLabel })
+          : t("crawler.notify.crawl_failed_detail", {
+              id: srcLabel,
+              detail: String(
+                r.error ||
+                  t("crawler.notify.crawl_exit_code", {
+                    code: r.returnCode ?? "?",
+                  }),
+              ).slice(0, 400),
+            }),
       });
     }
   }, [crawlAllResults, nc, sources]);
@@ -287,7 +295,7 @@ export function useCrawlerSection({ nc, activeSection }) {
 
   const handleAddSource = async () => {
     if (!addSourceForm.id.trim() || !addSourceForm.url.trim()) {
-      setError("Source ID and URL are required");
+      setError(t("crawler.error.source_id_url_required"));
       return;
     }
 
@@ -311,7 +319,7 @@ export function useCrawlerSection({ nc, activeSection }) {
         seed_urls: [],
       });
       await loadSources();
-      alert("Source added successfully!");
+      alert(t("crawler.alert.source_added"));
     } catch (e) {
       setError(e.message);
     } finally {
@@ -341,7 +349,7 @@ export function useCrawlerSection({ nc, activeSection }) {
 
   const handleUpdateSource = async () => {
     if (!editSourceForm.url.trim()) {
-      setError("URL is required");
+      setError(t("crawler.error.url_required"));
       return;
     }
 
@@ -363,7 +371,7 @@ export function useCrawlerSection({ nc, activeSection }) {
       setShowEditSourceModal(false);
       setEditingSourceId(null);
       await loadSources();
-      alert("Source updated successfully!");
+      alert(t("crawler.alert.source_updated"));
     } catch (e) {
       setError(e.message);
     } finally {

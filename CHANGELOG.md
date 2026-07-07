@@ -1,6 +1,10 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.46] - 2026-07-07
+### Changed
+- Localize crawler notifications, result modal, collection flow, and pipeline errors (P1.10).
+
 ## [0.8.45] - 2026-07-07
 ### Changed
 - Localize MD Pipeline editor UI (preview modal, step cards, step params) for crawler tab (P1.10).

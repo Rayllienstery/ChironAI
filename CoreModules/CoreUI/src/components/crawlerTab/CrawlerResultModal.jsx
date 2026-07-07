@@ -1,4 +1,5 @@
 import React from "react";
+import { t } from "../../services/i18n.js";
 
 export default function CrawlerResultModal({ results, onClose }) {
   if (!results.length) return null;
@@ -11,14 +12,14 @@ export default function CrawlerResultModal({ results, onClose }) {
               <div className="modal-header">
                 <h3>
                   {results.length === 1
-                    ? "Crawl finished"
-                    : "Crawl ALL finished"}
+                    ? t("crawler.result.crawl_finished")
+                    : t("crawler.result.crawl_all_finished")}
                 </h3>
                 <button
                   type="button"
                   className="modal-close"
                   onClick={() => onClose()}
-                  aria-label="Close"
+                  aria-label={t("common.close")}
                 >
                   ×
                 </button>
@@ -31,26 +32,32 @@ export default function CrawlerResultModal({ results, onClose }) {
                       <p>
                         <strong>{r.sourceId}</strong>:{" "}
                         {r.success
-                          ? "Completed successfully."
+                          ? t("crawler.result.completed")
                           : r.error ||
-                             `Failed (return code ${r.returnCode ?? "—"}).`}
+                            t("crawler.result.failed_return_code", {
+                              code: r.returnCode ?? "—",
+                            })}
                       </p>
                     );
                   })()
                 ) : (
                   <>
                     <p className="crawler-result-summary">
-                      Succeeded:{" "}
-                      {results.filter((r) => r.success).length}, Failed:{" "}
-                      {results.filter((r) => !r.success).length}
+                      {t("crawler.result.summary", {
+                        success: results.filter((r) => r.success).length,
+                        failed: results.filter((r) => !r.success).length,
+                      })}
                     </p>
                     <ul className="crawler-result-list">
                       {results.map((r, i) => (
                         <li key={i}>
                           <strong>{r.sourceId}</strong>:{" "}
                           {r.success
-                            ? "OK"
-                             : r.error || `code ${r.returnCode ?? "—"}`}
+                            ? t("crawler.result.ok")
+                            : r.error ||
+                              t("crawler.result.failed_code", {
+                                code: r.returnCode ?? "—",
+                              })}
                         </li>
                       ))}
                     </ul>
@@ -63,7 +70,7 @@ export default function CrawlerResultModal({ results, onClose }) {
                   className="crawler-button primary"
                   onClick={() => onClose()}
                 >
-                  OK
+                  {t("common.ok")}
                 </button>
               </div>
             </div>

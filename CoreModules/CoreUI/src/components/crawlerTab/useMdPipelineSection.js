@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { t } from "../../services/i18n.js";
 import {
   deleteMdPipeline,
   getIndexerTesterFiles,
@@ -231,7 +232,7 @@ export function useMdPipelineSection({ activeSection }) {
 
   const handlePreviewMdPipeline = async () => {
     if (!pipelinePreviewSourceId || !pipelinePreviewFilename) {
-      setPipelineError("Select a source and file for preview first.");
+      setPipelineError(t("crawler.pipeline.error.preview_required"));
       return;
     }
     setPreviewLoading(true);
@@ -263,11 +264,11 @@ export function useMdPipelineSection({ activeSection }) {
   const handleConfirmCreatePipeline = async () => {
     const name = (newPipelineName || "").trim().replace(/\.json$/i, "");
     if (!name) {
-      setPipelineError("Pipeline name is required.");
+      setPipelineError(t("crawler.pipeline.error.name_required"));
       return;
     }
     if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
-      setPipelineError("Use only letters, numbers, underscores and hyphens.");
+      setPipelineError(t("crawler.pipeline.error.name_invalid"));
       return;
     }
     setPipelineError(null);
