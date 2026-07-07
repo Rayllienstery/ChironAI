@@ -1,6 +1,10 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.27] - 2026-07-07
+### Fixed
+- `scripts/quality_gate.py` mirrors pytest `pythonpath` in subprocess `PYTHONPATH` so advisory `lint-imports` resolves Core and CoreModules packages on Windows and Linux.
+
 ## [0.8.26] - 2026-07-07
 ### Changed
 - Pin `ollama/ollama` image digest in `docker-compose.yml` for reproducible Compose pulls.

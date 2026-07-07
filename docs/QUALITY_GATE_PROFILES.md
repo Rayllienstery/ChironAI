@@ -81,6 +81,12 @@ Everything in `full`, plus:
 | `startup_smoke_bat.ps1` | advisory with `--include-advisory` | skipped |
 | `mutmut` | advisory; prefer WSL/CI Linux | advisory |
 
+`scripts/quality_gate.py` sets `PYTHONPATH` for every subprocess step to mirror
+`[tool.pytest.ini_options].pythonpath` (repo root, `Core`, `Core/modules/*`, and
+`CoreModules/*` package roots). This lets advisory `lint-imports` resolve
+`domain`, `llm_proxy`, `rag_service`, and other layer packages on Windows and
+Linux without a manual editable install.
+
 ## Advisory vs required
 
 - **Required** failures block the gate (`exit 1`).

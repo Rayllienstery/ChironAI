@@ -13,6 +13,33 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 COREUI_ROOT = REPO_ROOT / "CoreModules" / "CoreUI"
 
+# Mirrors [tool.pytest.ini_options].pythonpath so lint-imports can resolve layer packages.
+_QUALITY_GATE_PYTHONPATH_REL = (
+    ".",
+    "Core",
+    "Core/modules/webui_backend",
+    "Core/modules/crawler_service",
+    "Core/modules/extensions_backend",
+    "Core/modules/html_md",
+    "Core/modules/prompts_manager",
+    "CoreModules/LlmInteractor",
+    "CoreModules/Security",
+    "CoreModules/ExtensionsSandbox",
+    "CoreModules/ExtensionsHost",
+    "CoreModules/DockerManager",
+    "CoreModules/LlmProxy",
+    "CoreModules/RagService",
+    "CoreModules/WebInteraction",
+    "CoreModules/LogsManager",
+    "CoreModules/MdIngestionService",
+    "CoreModules/ErrorManager",
+    "CoreModules/Localization",
+)
+
+
+def _quality_gate_pythonpath() -> list[str]:
+    return [str(REPO_ROOT / rel) for rel in _QUALITY_GATE_PYTHONPATH_REL]
+
 
 @dataclass(frozen=True)
 class GateStep:
@@ -266,7 +293,7 @@ def run_step(step: GateStep) -> bool:
     )
     command: str | tuple[str, ...] = format_command(step) if shell else step.command
     env = os.environ.copy()
-    source_paths = [str(REPO_ROOT / "Core")]
+    source_paths = _quality_gate_pythonpath()
     if env.get("PYTHONPATH"):
         source_paths.append(env["PYTHONPATH"])
     env["PYTHONPATH"] = os.pathsep.join(source_paths)
