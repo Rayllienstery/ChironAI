@@ -1,0 +1,13 @@
+# Mutation baseline score (advisory)
+
+Updated from `linux-fast` tag CI via `scripts/capture_mutation_baseline.sh`.
+Full log: `mutation-baseline.txt` (CI artifact on `v*` tags).
+
+status=pending_first_tag_ci_run
+captured_at=
+killed=
+survived=
+timeout=
+skipped=
+
+# After a tag build, copy the `mutmut results` summary lines here or from the artifact.
