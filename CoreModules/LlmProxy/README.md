@@ -51,6 +51,14 @@ Proxy traces expose **`images_count`** per Ollama message when `images` is prese
 
 If you see that string inside the **user message** (as opposed to an HTTP error response), it means the **client** failed to attach/read the local image before sending the request. The proxy cannot read `image.png` from the user’s machine via a file path in text. To send an image through `POST /v1/chat/completions` or `POST /v1/responses`, the client must include a `data:image/...;base64,...` data URL (as `image_url` in chat/completions or `input_image.image_url` in responses).
 
+#### Responses API `input_image` with `file_id`
+
+Some Responses API clients send `{ "type": "input_image", "file_id": "..." }` after uploading files to OpenAI storage. ChironAI does **not** resolve OpenAI `file_id` references. Those parts are replaced with:
+
+`[Image omitted: Responses file_id references are not resolved by the proxy.]`
+
+**Workaround:** configure the client to inline images as `image_url` (including `data:image/...;base64,...`) or use `POST /v1/chat/completions` with OpenAI-style `image_url` content parts.
+
 **OpenCode (`@ai-sdk/openai-compatible`):** custom models default to text-only unless you declare `modalities` in `~/.config/opencode/opencode.jsonc`. Without `"input": ["text", "image"]`, OpenCode strips attachments client-side before the proxy sees them. Regenerate a working config from current WebUI builds + proxy key:
 
 ```bash

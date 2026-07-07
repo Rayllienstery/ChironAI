@@ -84,6 +84,7 @@ No proxy API key configured on server.
 | Message | Cause | Fix |
 |---------|-------|-----|
 | `Cannot read "image.png"` in user content | Client failed to embed file | Configure client modalities; use data URL |
+| `Image omitted: Responses file_id` in user content | Client sent `input_image.file_id` | Use inline `image_url` / data URL instead |
 | Model does not support image | Text-only upstream tag | Set build vision fallback or vision model |
 | Empty response with image | Tools+vision conflict | Expected suppression — split turns |
 

@@ -119,7 +119,7 @@ def test_product_security_headers_are_applied(monkeypatch: pytest.MonkeyPatch) -
     assert response.status_code == 200
     assert response.headers["X-Content-Type-Options"] == "nosniff"
     assert response.headers["X-Frame-Options"] == "SAMEORIGIN"
-    assert response.headers["Strict-Transport-Security"].startswith("max-age=31536000")
+    assert "Strict-Transport-Security" not in response.headers
     csp = response.headers["Content-Security-Policy"]
     assert "default-src 'self'" in csp
     assert "object-src 'none'" in csp

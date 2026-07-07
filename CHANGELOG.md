@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.33] - 2026-07-07
+### Fixed
+- Welcome notification title uses API `display_name` only (P2.11c).
+- Send `Strict-Transport-Security` only for HTTPS requests (P2.9b).
+
+### Changed
+- Document Responses API `input_image.file_id` limitation in LlmProxy README and Help troubleshooting (P2.12b).
+- Document `LLM_PROXY_VISION_*` env vars in `RELEASE.md` (P2.12c).
+- Security header tests assert CSP `unsafe-inline`/`unsafe-eval` on HTTP and HSTS on HTTPS (P2.9a).
+
 ## [0.8.32] - 2026-07-07
 ### Added
 - CoreUI `developerMode` helpers with unit tests documenting default-off Developer Tools behavior (P1.14).

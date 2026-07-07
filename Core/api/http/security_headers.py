@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from flask import request
+
 SECURITY_HEADERS: dict[str, str] = {
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "SAMEORIGIN",
     "Referrer-Policy": "no-referrer",
-    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
     "Content-Security-Policy": (
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
@@ -23,12 +24,23 @@ SECURITY_HEADERS: dict[str, str] = {
     ),
 }
 
+HSTS_HEADER_VALUE = "max-age=31536000; includeSubDomains"
+
+
+def _request_is_https() -> bool:
+    if request.is_secure:
+        return True
+    forwarded = str(request.headers.get("X-Forwarded-Proto") or "").split(",", 1)[0].strip().lower()
+    return forwarded == "https"
+
 
 def apply_security_headers(response: Any) -> Any:
     """Attach default hardening headers without overwriting explicit route headers."""
 
     for name, value in SECURITY_HEADERS.items():
         response.headers.setdefault(name, value)
+    if _request_is_https():
+        response.headers.setdefault("Strict-Transport-Security", HSTS_HEADER_VALUE)
     return response
 
 
@@ -38,4 +50,4 @@ def register_security_headers(app: Any) -> None:
     app.after_request(apply_security_headers)
 
 
-__all__ = ["SECURITY_HEADERS", "apply_security_headers", "register_security_headers"]
+__all__ = ["HSTS_HEADER_VALUE", "SECURITY_HEADERS", "apply_security_headers", "register_security_headers"]

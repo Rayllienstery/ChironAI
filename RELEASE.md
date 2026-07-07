@@ -6,6 +6,19 @@ Short gate before tagging a release. Run from repo root unless noted.
 
 Status: pre-tag ready on Windows local gates as of 2026-07-06.
 
+### LLM proxy vision environment (P2.12c)
+
+Configure on the server host when clients send images through `/v1/chat/completions` or `/v1/responses`:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `LLM_PROXY_VISION_FETCH_EXTERNAL_URLS` | `0` | Fetch remote `http(s)` image URLs server-side (trusted networks only) |
+| `LLM_PROXY_VISION_FALLBACK_MODEL` | empty | Ollama tag for image turns when the build model lacks vision |
+| `LLM_PROXY_VISION_READ_LOCAL_FILES` | `0` | Inline local file path hints from user text (Copilot/Kilo workaround) |
+| `LLM_PROXY_VISION_ALLOW_ABS_PATHS` | `0` | Allow absolute paths when local file read is enabled |
+
+See `CoreModules/LlmProxy/README.md` for OpenCode vision setup and `file_id` limitations.
+
 Highlights:
 
 - In-app Help KB, onboarding tours, InfoButton contextual help, per-build RAG collection UI.

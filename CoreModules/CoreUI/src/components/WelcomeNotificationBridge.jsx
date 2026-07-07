@@ -19,7 +19,7 @@ export default function WelcomeNotificationBridge() {
     const checkVersionAndNotify = async () => {
       try {
         const data = await getVersion();
-        if (!data || !data.version) return;
+        if (!data || !data.version || !data.display_name) return;
 
         const lastShownVersion = localStorage.getItem(WELCOME_NOTIF_STORAGE_KEY);
         if (lastShownVersion === data.version) return;
@@ -37,7 +37,7 @@ export default function WelcomeNotificationBridge() {
           .join('\n');
 
         await persistNotification({
-          title: data.display_name || `${data.app_name || 'Chiron AI'} ${data.version}`.trim(),
+          title: data.display_name,
           message: formatted || 'New version is here!',
           tone: 'info',
           source: 'system',
