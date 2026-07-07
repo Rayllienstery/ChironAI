@@ -122,6 +122,13 @@ FULL_GATE_EXTRA: tuple[GateStep, ...] = (
         required=False,
     ),
     GateStep(
+        "coreui-storybook",
+        _npm_command("run", "storybook"),
+        COREUI_ROOT,
+        180,
+        required=False,
+    ),
+    GateStep(
         "bandit",
         _python_command("-m", "bandit", "-r", "Core", "CoreModules", "-q", "-ll"),
         REPO_ROOT,

@@ -70,6 +70,7 @@ Everything in `full`, plus:
 | `scripts/startup_smoke.sh` | yes on Linux/WSL | Skipped on native Windows |
 | `scripts/startup_smoke_bat.ps1` | advisory | Windows smoke helper |
 | CoreUI `npm run e2e` | advisory | With `--include-advisory`; Playwright smoke |
+| CoreUI `npm run storybook` | advisory | Static Storybook build (`storybook-static/`); with `--include-advisory` on `full` |
 
 ## Platform parity
 

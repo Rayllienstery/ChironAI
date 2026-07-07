@@ -1,6 +1,14 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.39] - 2026-07-07
+### Added
+- Advisory `coreui-storybook` step in full quality gate profile (P2.8).
+
+### Changed
+- Document extension `manifest_sha256` and release digest verification in SECURITY.md (P2.3).
+- Mark WebUI auth middleware/tests as deferred per ADR 0008 (P1.1.2–3).
+
 ## [0.8.38] - 2026-07-07
 ### Added
 - Layout showcase vitest regression anchors for `layout.css` patterns (P3.1).

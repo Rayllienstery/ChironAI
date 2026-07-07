@@ -64,7 +64,8 @@ ChironAI can install extensions from a configured registry (default: GitHub-host
 | Risk | Current mitigation |
 |------|------------------|
 | Tampered or malicious registry entries | Blocklist policy (`ExtensionBlocklistPolicy`); manifest validation; install-time security audit |
-| Compromised publisher or repository | Registry metadata + GitHub release/archive resolution; user consent on capability changes (see [`docs/EXTENSIONS_GITHUB_MIGRATION.md`](docs/EXTENSIONS_GITHUB_MIGRATION.md)) |
+| Manifest tampering | Embedded `manifest_sha256` verified on load (`llm_interactor.manifest`; `tests/extensions_backend/test_manifest_security.py`) |
+| Compromised publisher or repository | Registry metadata + GitHub release/archive resolution; release asset `digest` (sha256) shown in Extensions UI when available |
 | Malicious extension code at runtime | Out-of-process sandbox workers; defense-in-depth only — not a sandbox escape guarantee |
 | Unauthenticated install from LAN | Same as WebUI — bind `127.0.0.1` or restrict network access (ADR 0008) |
 

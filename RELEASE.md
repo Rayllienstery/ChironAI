@@ -31,6 +31,10 @@ Configure on the server host when clients send images through `/v1/chat/completi
 
 See `CoreModules/LlmProxy/README.md` for OpenCode vision setup and `file_id` limitations.
 
+Highlights (0.8.39):
+
+- Storybook static build in quality gate (advisory); extension manifest SHA-256 documented in SECURITY.md.
+
 Verification snapshot (2026-07-07):
 
 - `python scripts/quality_gate.py --profile release --include-advisory` — passed locally.
