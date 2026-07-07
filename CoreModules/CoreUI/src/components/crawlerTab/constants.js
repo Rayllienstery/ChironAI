@@ -1,6 +1,6 @@
 import { t } from "../../services/i18n.js";
 
-export const MD_STEP_TYPE_IDS = [
+const MD_STEP_TYPE_IDS = [
   "strip_meta_block",
   "delete_lines_exact",
   "delete_lines_containing",
@@ -15,7 +15,7 @@ export const MD_STEP_TYPE_IDS = [
   "reject_low_signal_body",
 ];
 
-export function getMdStepTypeMeta(type) {
+function getMdStepTypeMeta(type) {
   return {
     type,
     title: t(`crawler.md_step.${type}.title`),

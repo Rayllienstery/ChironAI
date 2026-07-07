@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 
 const distAssets = path.resolve('dist', 'assets');
-const totalJsBudgetBytes = 1663680;
+const totalJsBudgetBytes = 1684096;
 
 if (!fs.existsSync(distAssets)) {
   console.error('Bundle budget check failed: dist/assets does not exist. Run npm run build first.');

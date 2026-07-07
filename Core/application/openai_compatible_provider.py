@@ -77,7 +77,8 @@ def _extract_assistant_text(raw: dict[str, Any]) -> str:
     choices = raw.get("choices")
     if isinstance(choices, list) and choices:
         first = choices[0] if isinstance(choices[0], dict) else {}
-        msg = first.get("message") if isinstance(first.get("message"), dict) else {}
+        raw_msg = first.get("message")
+        msg = raw_msg if isinstance(raw_msg, dict) else {}
         if msg.get("content") is not None:
             return str(msg.get("content") or "")
         if first.get("text") is not None:
@@ -280,7 +281,8 @@ class OpenAICompatibleProvider:
                 if not isinstance(choices, list) or not choices:
                     continue
                 first = choices[0] if isinstance(choices[0], dict) else {}
-                delta = first.get("delta") if isinstance(first.get("delta"), dict) else {}
+                raw_delta = first.get("delta")
+                delta = raw_delta if isinstance(raw_delta, dict) else {}
                 content = delta.get("content")
                 if content:
                     yield LLMStreamEvent(

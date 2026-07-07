@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import time
-
 from api.http.webui_crawler_indexing_runtime_core import (
     record_prepare_stats,
     remember_prepare_removal,

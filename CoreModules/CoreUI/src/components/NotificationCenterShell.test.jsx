@@ -27,7 +27,7 @@ vi.mock('./NotificationCenterContext', () => ({
 
 describe('NotificationCenterShell', () => {
   beforeEach(() => {
-    global.ResizeObserver = class ResizeObserver {
+    globalThis.ResizeObserver = class ResizeObserver {
       observe() {}
       unobserve() {}
       disconnect() {}
