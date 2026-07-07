@@ -1,6 +1,10 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.52] - 2026-07-07
+### Changed
+- P2.5: `create_production_app()` factory; static routes extracted; `rag_proxy` slim entrypoint.
+
 ## [0.8.51] - 2026-07-07
 ### Changed
 - P2.7: oversized-file audit excludes `storybook-static`; document `chat_completions_handler.py`.

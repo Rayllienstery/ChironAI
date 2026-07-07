@@ -32,7 +32,7 @@ echo Browser will open automatically when the backend is ready.
 echo (First start can take 10-30s while Python modules load.)
 echo.
 
-REM Run Flask server (rag_proxy registers webui_bp so /api/webui/* is available)
+REM Run production WSGI app (app_factory.create_production_app via rag_proxy)
 python -m webui_backend.rag_proxy
 set WEBUI_EXIT=%ERRORLEVEL%
 if not %WEBUI_EXIT%==0 (
