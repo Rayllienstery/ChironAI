@@ -36,7 +36,7 @@ def html_to_markdown(html: str, *, prefer_code_preservation: bool = True) -> str
         h.body_width = 0
         try:
             return re.sub(r"\n{3,}", "\n\n", h.handle(html).strip())
-        except Exception:
+        except Exception:  # safe: html2text failed; fall back to regex parser
             pass
     return _html_to_markdown_regex(html)
 

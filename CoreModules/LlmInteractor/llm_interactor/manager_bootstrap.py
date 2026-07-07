@@ -196,7 +196,7 @@ def prewarm_provider_rows_async(
             with cache_lock:
                 if not cache:
                     cache[:] = rows
-        except Exception:
+        except Exception:  # safe: background provider cache warm-up best-effort
             pass
 
     threading.Thread(

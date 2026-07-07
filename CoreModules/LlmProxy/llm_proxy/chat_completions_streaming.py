@@ -223,5 +223,5 @@ def iter_sse_finish_with_done(completion_id: str, model: str, finish_reason: str
         try:
             yield sse_finish_chunk(completion_id, model, "stop")
             yield SSE_DONE_LINE
-        except Exception:
+        except Exception:  # safe: client disconnect during SSE finish; ignore
             pass

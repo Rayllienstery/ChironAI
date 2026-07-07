@@ -31,7 +31,7 @@ def get_active_pipeline_name() -> str:
             name = cfg.get("active_pipeline")
             if name and isinstance(name, str) and name.strip():
                 return name.strip()
-    except Exception:
+    except Exception:  # safe: optional pipeline config; use env/default
         pass
     return os.environ.get("MD_INDEXER_PIPELINE", "default")
 

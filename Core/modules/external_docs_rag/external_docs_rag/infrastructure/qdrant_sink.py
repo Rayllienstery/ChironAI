@@ -81,7 +81,7 @@ class QdrantChunkSink:
                         vectors_config=dense_vectors_config(vector_size),
                     )
             return
-        except Exception:
+        except Exception:  # safe: collection recreate best-effort; create below
             pass
         if hybrid_sparse:
             vectors_config, sparse_vectors_config = hybrid_vectors_config(vector_size)

@@ -287,7 +287,7 @@ def ingest_url_list_to_collection(
         try:
             last_refreshed_at = datetime.now(timezone.utc).isoformat()
             on_indexed(collection_name, framework_id, version, last_refreshed_at)
-        except Exception:
+        except Exception:  # safe: on_indexed callback must not fail ingest
             pass
     return IngestResult(
         source_id=framework_id,

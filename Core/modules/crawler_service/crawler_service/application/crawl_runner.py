@@ -460,7 +460,7 @@ def crawl_source(host: CrawlHost, source: dict[str, Any], dry_run: bool = False)
                 val = (page_meta or {}).get(key)
                 if val:
                     pages_meta[page_filename][key] = val
-        except Exception:
+        except Exception:  # safe: optional markdown meta enrichment
             pass
 
         if not is_callback:

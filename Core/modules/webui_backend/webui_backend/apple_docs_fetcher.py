@@ -207,7 +207,7 @@ async def _fetch_apple_doc_raw_async(url: str) -> AppleDocRaw:
                     )
                     if retry_html and sum(m in retry_html for m in portal_markers) < sum(m in body_html for m in portal_markers):
                         body_html = retry_html
-            except Exception:
+            except Exception:  # safe: portal retry optional; keep prior body_html
                 pass
 
             # Hard guards for known bad targets: better to fail than to index portal navigation or stubs.

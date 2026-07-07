@@ -51,7 +51,7 @@ def _build_tool_arguments(
                 normalized_user_path = _normalize_tool_path(user_path)
                 if normalized_user_path and (root / normalized_user_path).exists():
                     file_path = normalized_user_path
-        except Exception:
+        except Exception:  # safe: workspace path resolution best-effort
             pass
     if user_path and not file_path:
         up2 = user_path.strip()

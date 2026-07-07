@@ -37,7 +37,7 @@ def resolve_framework_collection_ttl_days(
             return int(ttl_raw)
     except (TypeError, ValueError):
         pass
-    except Exception:
+    except Exception:  # safe: TTL settings read best-effort default
         pass
     return default_ttl_days
 

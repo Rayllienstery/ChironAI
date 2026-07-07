@@ -42,7 +42,7 @@ def _safe_notification_session_id() -> str:
                 sid = body.get("session_id")
             if sid:
                 return str(sid)
-    except Exception:
+    except Exception:  # safe: session id extraction best-effort outside request
         pass
     return "system"
 

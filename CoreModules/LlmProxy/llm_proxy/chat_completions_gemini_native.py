@@ -57,7 +57,7 @@ def _resolve_proxy_db_path_from_wiring(w: LlmProxyWiring | None) -> str:
             path = getattr(repo, "db_path", None)
             if path:
                 return str(path)
-        except Exception:
+        except Exception:  # safe: optional logs repo path; use default db
             pass
     return _resolve_default_webui_db_path()
 

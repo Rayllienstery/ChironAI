@@ -207,7 +207,7 @@ def _load_one_extension(
         try:
             manifest_for_failed = load_manifest_from_dir(source_dir)
             ext_id = manifest_for_failed.id
-        except Exception:
+        except Exception:  # safe: manifest load fallback for failed extension id
             pass
         security_findings: list[dict[str, object]] = []
         if isinstance(e, ExtensionSecurityError):

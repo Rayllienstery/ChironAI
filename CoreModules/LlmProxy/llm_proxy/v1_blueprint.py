@@ -170,7 +170,7 @@ def create_v1_blueprint(wiring: LlmProxyWiring) -> Blueprint:
                 try:
                     if wiring.get_autocomplete_ollama_model():
                         ids.append(str(wiring.runtime.autocomplete_model_logical_id))
-                except Exception:
+                except Exception:  # safe: autocomplete model id optional for models list
                     pass
             build_rows = _openai_build_model_rows(wiring)
             ids.extend(str(r["id"]) for r in build_rows if r.get("id"))

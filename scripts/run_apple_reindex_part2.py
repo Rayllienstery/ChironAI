@@ -59,7 +59,7 @@ def _wait_server(max_sec: float = 90) -> None:
             if code == 200:
                 print("WebUI ready.")
                 return
-        except Exception:
+        except Exception:  # safe: WebUI readiness poll; retry until timeout
             pass
         time.sleep(2)
     raise RuntimeError("WebUI did not become ready in time")

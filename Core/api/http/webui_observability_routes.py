@@ -66,7 +66,7 @@ def _log_webui_logs_read_duration(
                 "duration_ms": round(duration_ms, 2),
             },
         )
-    except Exception:
+    except Exception:  # safe: observability logging must not break requests
         pass
 
 

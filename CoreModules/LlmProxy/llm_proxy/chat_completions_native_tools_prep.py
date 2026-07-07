@@ -67,7 +67,7 @@ def analyze_tool_result_failure(last_tool_content: str) -> bool:
             err = parsed.get("error")
             if isinstance(err, str) and err.strip():
                 tool_error_text = (tool_error_text + "\n" + err.strip().lower()).strip()
-    except Exception:
+    except Exception:  # safe: tool result metadata parse best-effort
         pass
 
     if tool_ok_flag is False:

@@ -1374,7 +1374,7 @@ class OllamaProvider:
                             caps = details.get("capabilities")
                             if isinstance(caps, list):
                                 row["capabilities"] = list(caps)
-                except Exception:
+                except Exception:  # safe: per-model show details enrichment best-effort
                     pass
 
         return rows

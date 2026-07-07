@@ -79,7 +79,7 @@ def load_proxy_settings_and_model(get_settings_repository: Any) -> tuple[dict[st
         settings_repo = get_settings_repository()
         proxy_model_setting = (settings_repo.get_app_setting("proxy_model") or "").strip()
         proxy_settings = load_proxy_settings(settings_repo)
-    except Exception:
+    except Exception:  # safe: proxy settings load best-effort defaults
         pass
     if not proxy_model_setting and proxy_settings.get("model"):
         proxy_model_setting = str(proxy_settings.get("model") or "").strip()

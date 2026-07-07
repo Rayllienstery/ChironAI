@@ -544,7 +544,7 @@ def run_chat_completions(
             from application.llm_proxy_builds import merge_build_into_proxy_settings as _merge_build_ps
 
             proxy_settings = _merge_build_ps(dict(proxy_settings), active_build)
-        except Exception:
+        except Exception:  # safe: build overlay re-merge best-effort
             pass
 
     effective_context_chunk_chars, effective_context_total_chars, effective_rag_top_k = (
@@ -577,7 +577,7 @@ def run_chat_completions(
                 effective_embed_provider.model = target_embed_model
             if target_embed_model != current_embed_model:
                 trace["request"]["embed_model_override"] = target_embed_model
-    except Exception:
+    except Exception:  # safe: embed model override best-effort
         pass
 
     _ollama_caps: frozenset[str] | None = None

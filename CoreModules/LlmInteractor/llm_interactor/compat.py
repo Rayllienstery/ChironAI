@@ -103,7 +103,7 @@ class RuntimeBackedChatClient:
             fn = getattr(self._delegate, "chat_api_stream_final", None)
             if callable(fn):
                 return fn(body)
-        except Exception:
+        except Exception:  # safe: optional stream_final delegate; non-stream fallback
             pass
         return self.chat_api({**body, "stream": False})
 

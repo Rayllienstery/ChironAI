@@ -242,7 +242,7 @@ class OpenWebUiExtension:
                     volumes = cfg.volumes
                 if image:
                     return replace(cfg, image=image, volumes=volumes)
-        except Exception:
+        except Exception:  # safe: Docker state overlay optional; use static config
             pass
         return cfg
 

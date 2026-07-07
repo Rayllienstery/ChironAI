@@ -1,6 +1,10 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.29] - 2026-07-07
+### Changed
+- Document 38 intentional `except Exception: pass` blocks with `# safe:` comments so `audit_silent_exceptions.py --mode check` passes (P1.9).
+
 ## [0.8.28] - 2026-07-07
 ### Added
 - `create_app(bootstrap_extensions=False)` skips extension host wiring for OpenAPI/doc generation without touching Docker or `logs/extensions/installed/`.

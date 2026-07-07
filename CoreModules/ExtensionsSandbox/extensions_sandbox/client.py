@@ -530,7 +530,7 @@ class ExtensionWorkerClient:
             try:
                 if proc.poll() is None:
                     self._write({"type": "request", "id": self._next(), "method": "shutdown", "params": {}})
-            except Exception:
+            except Exception:  # safe: shutdown request best-effort before terminate
                 pass
         _terminate_process(proc)
         if self._finalizer is not None:

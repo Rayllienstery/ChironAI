@@ -74,7 +74,7 @@ def _find_trace_by_client_request_id(request_id: str) -> dict[str, Any] | None:
             req = tr.get("request") if isinstance(tr.get("request"), dict) else {}
             if str(req.get("client_request_id") or "") == rid:
                 return tr
-    except Exception:
+    except Exception:  # safe: best-effort trace ring lookup; fallback below
         pass
     tr = get_current_trace() or {}
     if isinstance(tr, dict):
@@ -170,14 +170,14 @@ def _live_rag_step_timings(trace: dict[str, Any] | None, elapsed_ms: int) -> dic
         try:
             if timings.get(k) is not None:
                 out[k] = max(0.0, float(timings.get(k) or 0.0))
-        except Exception:
+        except Exception:  # safe: skip non-numeric timing values
             pass
     total_s = max(0.0, float(elapsed_ms) / 1000.0)
     try:
         resp = trace.get("response") if isinstance(trace.get("response"), dict) else {}
         if resp.get("latency_ms") is not None:
             total_s = max(0.0, float(resp.get("latency_ms") or 0.0) / 1000.0)
-    except Exception:
+    except Exception:  # safe: latency coercion optional; keep elapsed_ms fallback
         pass
     out["latency_s_total"] = total_s
     out["chat_s_estimated"] = max(0.0, total_s - float(out.get("total_rag_s") or 0.0))

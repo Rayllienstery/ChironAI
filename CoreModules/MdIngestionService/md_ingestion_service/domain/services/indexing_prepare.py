@@ -364,7 +364,7 @@ def prepare_markdown_for_indexing(
                     body_md="",
                     skip_detail="apple_portal_navigation_page",
                 )
-    except Exception:
+    except Exception:  # safe: apple portal detection best-effort
         pass
 
     site = str(source_extra.get("site") or "").strip().lower()
@@ -419,7 +419,7 @@ def prepare_markdown_for_indexing(
             if isinstance(_meta_extra, dict) and _meta_extra:
                 page_meta = {**page_meta, **_meta_extra}
             pipeline_applied = True
-        except Exception:
+        except Exception:  # safe: indexing pipeline apply best-effort
             pass
 
     noise = get_indexing_list("noise_section_headings", [])

@@ -41,7 +41,7 @@ def _require_runtime(runtime_getter: Callable[[], Any | None] | None, runtime: A
             err = str(getattr(svc, "runtime_error", "") or "").strip()
             if status or err:
                 detail = f" (extensions status={status}" + (f", error={err}" if err else "") + ")"
-    except Exception:
+    except Exception:  # safe: extensions status detail optional in error
         pass
     raise EmbeddingError(_RUNTIME_UNAVAILABLE + detail)
 
@@ -382,7 +382,7 @@ class _RuntimeBackedChatClient:
             fn = getattr(self._delegate, "chat_api_stream_final", None)
             if callable(fn):
                 return fn(body)
-        except Exception:
+        except Exception:  # safe: optional stream_final delegate; non-stream fallback
             pass
         return self.chat_api({**body, "stream": False})
 

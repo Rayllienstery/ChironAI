@@ -79,7 +79,7 @@ def register_chat_routes(
                             or default_llm_provider_id(),
                         },
                     )
-            except Exception:
+            except Exception:  # safe: autocomplete model insert optional
                 pass
 
             return jsonify({"models": models_list})

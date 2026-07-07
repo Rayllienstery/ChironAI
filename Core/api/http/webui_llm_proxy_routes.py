@@ -233,7 +233,7 @@ def register_llm_proxy_routes(
                     value = str(model.get(key) or "").strip()
                     if value:
                         names.add(value)
-        except Exception:
+        except Exception:  # safe: diagnostics catalog lookup best-effort
             pass
         return names
 

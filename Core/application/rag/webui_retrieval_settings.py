@@ -33,7 +33,7 @@ def get_effective_rag_trigger_threshold(settings_repo: Any | None = None) -> int
         raw = repo.get_app_setting("rag_trigger_threshold")
         if raw is not None and str(raw).strip() != "":
             return int(raw)
-    except Exception:
+    except Exception:  # safe: app setting override optional; use config default
         pass
     return get_retrieval_int("rag_trigger_threshold", 2)
 

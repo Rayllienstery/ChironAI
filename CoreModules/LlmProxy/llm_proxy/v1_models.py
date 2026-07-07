@@ -49,7 +49,7 @@ def _openai_model_rows(wiring: LlmProxyWiring) -> list[dict[str, object]]:
         try:
             if wiring.get_autocomplete_ollama_model():
                 data.append(_openai_autocomplete_model_row(wiring))
-        except Exception:
+        except Exception:  # safe: autocomplete model row optional
             pass
     data.extend(_openai_build_model_rows(wiring))
     return data

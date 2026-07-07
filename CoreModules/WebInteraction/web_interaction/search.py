@@ -65,7 +65,7 @@ def search_snippets(
                     out.append(sn)
                 if len(out) >= max_n:
                     break
-    except Exception:
+    except Exception:  # safe: DDG primary search best-effort; fallbacks below
         pass
 
     def _merge_fallback(rows: list[dict[str, str]] | None) -> None:
@@ -88,7 +88,7 @@ def search_snippets(
             with DDGS() as ddgs:
                 lite_rows = ddgs._text_lite(q, region=region, timelimit=None, max_results=max_n)
             _merge_fallback(lite_rows)
-        except Exception:
+        except Exception:  # safe: DDG lite fallback best-effort
             pass
 
     if len(out) < max_n:
@@ -96,7 +96,7 @@ def search_snippets(
             with DDGS() as ddgs:
                 html_rows = ddgs._text_html(q, region=region, timelimit=None, max_results=max_n)
             _merge_fallback(html_rows)
-        except Exception:
+        except Exception:  # safe: DDG html fallback best-effort
             pass
 
     return out[:max_n]
