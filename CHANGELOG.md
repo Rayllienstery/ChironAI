@@ -1,6 +1,14 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.38] - 2026-07-07
+### Added
+- Layout showcase vitest regression anchors for `layout.css` patterns (P3.1).
+- `scripts/capture_mutation_baseline.sh` and tag CI advisory capture (P3.8).
+
+### Changed
+- Mutation baseline workflow documented in `QUALITY_GATE_PROFILES.md` (P2.6/P3.8).
+
 ## [0.8.37] - 2026-07-07
 ### Added
 - CSP Vite spike and risk acceptance doc; SECURITY.md cross-link (P2.9c, P1.4 partial).

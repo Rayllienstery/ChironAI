@@ -113,11 +113,17 @@ Baseline command:
 python scripts/quality_gate.py --profile mutation --include-advisory
 ```
 
-Baseline status on 2026-06-21: configured, but no numeric mutation score was
-recorded on the native Windows workstation. `mutmut 3.6.0` exits before running
-on native Windows and requires WSL; the workstation has WSL enabled but no Linux
-distribution installed. Capture the first score from WSL or CI Linux and update
-this section with the surviving/killed mutation counts.
+Baseline status on **2026-07-07**:
+
+| Environment | `mutmut run` | Baseline capture |
+|-------------|--------------|------------------|
+| Native Windows | **Unsupported** (mutmut 3.6+) | Use WSL Linux distro or CI |
+| Linux CI (`linux-fast` on `v*` tags) | Advisory via `scripts/capture_mutation_baseline.sh` | `reports/baseline/mutation-baseline.txt` (artifact in job log; commit optional) |
+| Local Linux / WSL | `python scripts/quality_gate.py --profile mutation --include-advisory` | Same script |
+
+Promotion: when the first tag CI run produces `mutation-baseline.txt`, record killed/survived counts in this section. Until then, mutation testing remains **advisory** and non-blocking.
+
+Previous note (2026-06-21): configured on Windows workstation but no numeric score; WSL default distro was `docker-desktop` without bash. Use a full Linux distro or CI.
 
 ## Related scripts
 
