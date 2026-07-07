@@ -53,6 +53,10 @@ Built-in WebUI authentication is **deferred** until a prioritized LAN/multi-user
 - Extension install/update/remove/enable/disable routes are part of the WebUI API surface. These routes do **not** require authentication. Run ChironAI only on `localhost` or inside a trusted network, and treat any network that can reach the WebUI as having full extension-management access.
 - Dependency vulnerabilities are monitored via `pip-audit`, `npm audit`, and Trivy image scans documented in `RELEASE.md`.
 
+## Content Security Policy
+
+CoreUI responses include a CSP from `security_headers.py` with `'unsafe-inline'` and `'unsafe-eval'` on `script-src`. This is **accepted for 0.8.x localhost-first use**; production Vite bundles do not require `eval()` at runtime. See [`docs/CSP_RISK_ACCEPTANCE.md`](docs/CSP_RISK_ACCEPTANCE.md) for the Vite spike, promotion criteria, and P1.4 follow-up.
+
 ## Extension registry provenance
 
 ChironAI can install extensions from a configured registry (default: GitHub-hosted JSON) or from local/bundled paths. **There is no full cryptographic signature verification** of third-party extension packages today.

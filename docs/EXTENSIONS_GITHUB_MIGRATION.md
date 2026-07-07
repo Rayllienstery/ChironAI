@@ -857,7 +857,6 @@ The migration is ready when all of the following are true:
 - Should extension release artifacts be signed, or is SHA-256 verification enough for the first migration?
 - Should trusted bundled extensions remain installable without network access?
 - Should remote extension installs support rollback to the previous installed version?
-- Should registry entries support channels such as `stable`, `beta`, and `nightly`?
 - Should CoreUI expose registry source and update availability directly in the Extensions tab?
 - Should extension repositories declare their own notification event schema, or should the core extension host normalize all extension events into one app-level contract?
 - Which GitHub API mode should be used for README/version discovery: unauthenticated public API, configured token, or raw GitHub URLs with graceful rate-limit handling?
@@ -869,3 +868,15 @@ The migration is ready when all of the following are true:
 - Should public community extensions be allowed in the first release, or should the registry start official-only until governance and scanning are proven?
 - Which rare lifecycle operations are allowed to require full app restart, and how should the UI communicate that scope?
 - Should the extension-management module run in-process during early migration and later as HTTP, or should it start as an HTTP module from the first implementation PR?
+
+## Registry channels (decision 0.8.x, P3.7)
+
+**Decision:** The bundled registry does **not** use `stable` / `beta` / `nightly` channel fields in **0.8.x**. Installable versions are resolved from immutable **release tags** or pinned version strings in registry JSON, matching the provenance model in [Extension registry provenance](../SECURITY.md#extension-registry-provenance).
+
+| Approach | 0.8.x status |
+|----------|----------------|
+| Release tag / pinned version | **Supported** — default for official extensions |
+| Floating `latest` / branch archives | Advanced/manual only; documented risk |
+| Registry `channels` metadata | **Deferred** — revisit when a second registry feed or community catalog ships |
+
+CoreUI may show update availability from registry metadata but does not expose channel pickers until channel semantics and signing are defined.

@@ -101,8 +101,8 @@ sources:
   seed_urls: []
   extra:
     type: wwdc_transcripts
-    # Index of WWDC 2014–2024 transcripts; we filter by min_year.
-    # TODO(M4): extend or replace before WWDC25+ sessions are required (gist ends at 2024).
+    # WWDC transcript index (2014–2024). WWDC 2025+ sessions require a new TSV source (owner: docs/RAG).
+    # Until then, min_year filters keep results within the indexed range.
     tsv_url: https://gist.githubusercontent.com/elkraneo/6015e04c81dd227dd9974a2ec9d89cff/raw/WWDC-Transcripts-2014-2024-ENG.tsv
     min_year: 2019
 

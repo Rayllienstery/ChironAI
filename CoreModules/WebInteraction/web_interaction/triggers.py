@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Literal
 
-# Freshness / release intent (subset aligned with product TODO)
+# English phrases that imply time-sensitive or release-specific facts (web supplement trigger).
 _FRESHNESS_PHRASES_EN = (
     "latest",
     "current version",
@@ -17,6 +17,8 @@ _FRESHNESS_PHRASES_EN = (
 )
 # iOS 9 … iOS 26+ (1–3 digits); matches "iOS 26", "iOS 18.2" prefix handled elsewhere
 _IOS_VERSION_RE = re.compile(r"\bios\s*\d{1,3}\b", re.IGNORECASE)
+_CURRENT_WORD_RE = re.compile(r"\bcurrent\b", re.IGNORECASE)
+_CURRENTLY_WORD_RE = re.compile(r"\bcurrently\b", re.IGNORECASE)
 
 # Framework / library names (extend as needed)
 _FRAMEWORK_TOKENS = frozenset(
@@ -52,8 +54,7 @@ def wants_freshness_or_release(user_message: str) -> bool:
         return False
     if _IOS_VERSION_RE.search(user_message or ""):
         return True
-    # Standalone "current" (TODO: freshness keywords) — not "currently"
-    if re.search(r"\bcurrent\b", user_message or "", re.IGNORECASE):
+    if _CURRENT_WORD_RE.search(user_message or "") and not _CURRENTLY_WORD_RE.search(user_message or ""):
         return True
     return any(p in q for p in _FRESHNESS_PHRASES_EN)
 

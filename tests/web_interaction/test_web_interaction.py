@@ -19,6 +19,10 @@ def test_wants_freshness_current_word() -> None:
     assert wants_freshness_or_release("What is the current iOS version?") is True
 
 
+def test_wants_freshness_ignores_currently() -> None:
+    assert wants_freshness_or_release("I am currently learning SwiftUI") is False
+
+
 def test_wants_freshness_ios_version() -> None:
     assert wants_freshness_or_release("Does iOS 26 support X?") is True
 

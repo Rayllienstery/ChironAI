@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.37] - 2026-07-07
+### Added
+- CSP Vite spike and risk acceptance doc; SECURITY.md cross-link (P2.9c, P1.4 partial).
+- Storybook `StandByScreen` stories (P3.9).
+- Extension registry channels decision for 0.8.x (P3.7).
+
+### Changed
+- WebInteraction freshness trigger ignores `currently`; test coverage (P3.5).
+- Document WWDC transcript source staleness in `sources.yaml` (P3.6).
+
 ## [0.8.36] - 2026-07-07
 ### Changed
 - Add advisory `coreui-e2e` step to release quality gate profile (P2.14c).

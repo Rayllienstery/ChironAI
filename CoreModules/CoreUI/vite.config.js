@@ -51,6 +51,9 @@ function preCompressPlugin() {
 
 const apiProxyTarget = process.env.VITE_API_PROXY_TARGET || process.env.CHIRONAI_API_PROXY_TARGET || 'http://localhost:8080';
 
+// CSP note: production Flask CSP is set in Core/api/http/security_headers.py.
+// Vite dev/HMR needs eval; see docs/CSP_RISK_ACCEPTANCE.md (P2.9c).
+
 export default defineConfig({
   plugins: [
     react(),
