@@ -1,6 +1,10 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.26] - 2026-07-07
+### Changed
+- Pin `ollama/ollama` image digest in `docker-compose.yml` for reproducible Compose pulls.
+
 ## [0.8.25] - 2026-07-07
 ### Fixed
 - Docker runtime startup: honor `CHIRONAI_REPO_ROOT` during import-path bootstrap so extension directories resolve under `/app` instead of the read-only site-packages tree.
