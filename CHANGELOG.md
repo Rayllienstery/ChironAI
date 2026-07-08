@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.53] - 2026-07-08
+### Fixed
+- Mutation baseline capture exports quality_gate `PYTHONPATH` so mutmut matches pytest imports.
+- Silent-exceptions advisory: justify teardown `except Exception: pass` in `tests/conftest.py`.
+### Changed
+- Document `v0.8.52` mutation CI artifact path mismatch in `docs/mutation-baseline-score.txt`.
+
 ## [0.8.52] - 2026-07-07
 ### Changed
 - P2.5: `create_production_app()` factory; static routes extracted; `rag_proxy` slim entrypoint.

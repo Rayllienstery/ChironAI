@@ -4,6 +4,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
+export PYTHONPATH="$(python scripts/print_quality_gate_pythonpath.py)"
 OUT_DIR="$ROOT/reports/baseline"
 OUT_FILE="$OUT_DIR/mutation-baseline.txt"
 mkdir -p "$OUT_DIR"

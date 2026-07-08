@@ -3,11 +3,10 @@
 Updated from `linux-fast` tag CI via `scripts/capture_mutation_baseline.sh`.
 Full log: `mutation-baseline.txt` (CI artifact on `v*` tags).
 
-status=pending_first_tag_ci_run
-captured_at=
+status=ci_path_mismatch_v0.8.52
+captured_at=2026-07-07T21:14:43Z
 killed=
 survived=
 timeout=
 skipped=
-
-# After a tag build, copy the `mutmut results` summary lines here or from the artifact.
+note=v0.8.52 artifact stopped early (mutmut trampoline keys vs pytest imports). capture_mutation_baseline.sh now exports quality_gate PYTHONPATH; expect scores on next tag CI run.

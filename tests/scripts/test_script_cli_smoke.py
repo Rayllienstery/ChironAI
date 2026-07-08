@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -52,3 +53,18 @@ def test_validate_openapi_help() -> None:
     result = _run_script_help("validate_openapi.py")
     assert result.returncode == 0, result.stderr
     assert "openapi 3.1" in result.stdout.lower()
+
+
+def test_print_quality_gate_pythonpath_includes_core_and_rag_service() -> None:
+    script = REPO_ROOT / "scripts" / "print_quality_gate_pythonpath.py"
+    result = subprocess.run(
+        [sys.executable, str(script)],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    paths = result.stdout.strip().split(";") if os.name == "nt" else result.stdout.strip().split(":")
+    assert any(path.endswith("Core") or path.endswith("Core\\") for path in paths)
+    assert any("RagService" in path for path in paths)

@@ -114,7 +114,7 @@ def _reset_webui_sqlite_singletons() -> Iterator[None]:
         try:
             module = __import__(module_name, fromlist=[attr])
             setattr(module, attr, None)
-        except Exception:
+        except Exception:  # safe: optional infra module cleanup in teardown
             pass
     gc.collect()
 

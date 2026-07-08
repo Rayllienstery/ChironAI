@@ -4,7 +4,7 @@ Short gate before tagging a release. Run from repo root unless noted.
 
 ## Release candidate 0.8.52 notes
 
-Status: pre-tag ready on Windows local gates as of 2026-07-07.
+Status: **released** — tag `v0.8.52`, CI `release` + `linux-fast` green, GitHub Release published, local `startup_smoke_bat` PASS (2026-07-08).
 
 Highlights (0.8.52):
 
