@@ -1,6 +1,12 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.54] - 2026-07-09
+### Fixed
+- Mutation testing: dedicated `mutmut_pytest.ini` (`import-mode=prepend`), `also_copy`, disable `mutate_only_covered_lines`; clear `mutants/` before CI capture.
+### Changed
+- Document `v0.8.53` mutation CI outcome (tests ran, no scores) in `mutation-baseline-score.txt`.
+
 ## [0.8.53] - 2026-07-08
 ### Fixed
 - Mutation baseline capture exports quality_gate `PYTHONPATH` so mutmut matches pytest imports.

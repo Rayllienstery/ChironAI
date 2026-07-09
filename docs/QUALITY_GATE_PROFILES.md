@@ -122,6 +122,8 @@ Baseline status on **2026-07-07**:
 | Linux CI (`linux-fast` on `v*` tags) | Advisory via `scripts/capture_mutation_baseline.sh` | `mutation-baseline.txt` artifact + `docs/mutation-baseline-score.txt` |
 | Local Linux / WSL | `python scripts/quality_gate.py --profile mutation --include-advisory` | Same script |
 
+`mutmut_pytest.ini` (copied into `mutants/` via `also_copy`) uses `--import-mode=prepend` and package-aligned `pythonpath` so mutant module keys match pytest imports. `capture_mutation_baseline.sh` exports quality_gate `PYTHONPATH` and clears `mutants/` before each capture.
+
 Promotion: when a tag CI run produces `mutmut results` with killed/survived counts, copy the summary into `docs/mutation-baseline-score.txt`. `capture_mutation_baseline.sh` exports the same `PYTHONPATH` as `quality_gate.py` so mutmut module keys match pytest imports.
 
 Previous note (2026-06-21): configured on Windows workstation but no numeric score; WSL default distro was `docker-desktop` without bash. Use a full Linux distro or CI.

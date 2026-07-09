@@ -113,3 +113,15 @@ def test_quality_gate_help() -> None:
 
     assert result.returncode == 0, result.stderr
     assert "quality gates" in result.stdout.lower()
+
+
+def test_mutmut_config_uses_dedicated_pytest_ini() -> None:
+    import tomllib
+    from pathlib import Path
+
+    data = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+    mutmut = data["tool"]["mutmut"]
+
+    assert mutmut["mutate_only_covered_lines"] is False
+    assert "mutmut_pytest.ini" in mutmut["also_copy"]
+    assert Path("mutmut_pytest.ini").is_file()

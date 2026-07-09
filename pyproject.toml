@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chironai"
-version = "0.8.53"
+version = "0.8.54"
 description = "Modular RAG platform (Ollama + Qdrant) with WebUI and crawl/index pipelines. Configured for Apple platforms, supports any domain."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -66,7 +66,7 @@ Homepage = "https://github.com/Rayllienstery/ChironAI"
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.8.53"
+version = "0.8.54"
 version_files = [
   "Core/core/version.py:VERSION",
   "pyproject.toml:version",
@@ -328,8 +328,13 @@ ignore_errors = false
 
 [tool.mutmut]
 source_paths = [
-  "Core/domain/services",
+  "Core/domain",
   "CoreModules/RagService/rag_service/domain",
+]
+pytest_add_cli_args = ["-c", "mutmut_pytest.ini"]
+also_copy = [
+  "mutmut_pytest.ini",
+  "tests/conftest.py",
 ]
 pytest_add_cli_args_test_selection = [
   "tests/domain",
@@ -337,7 +342,7 @@ pytest_add_cli_args_test_selection = [
   "tests/rag_service/test_core_engine.py",
   "tests/rag_service/test_rag_pipeline_integration.py",
 ]
-mutate_only_covered_lines = true
+mutate_only_covered_lines = false
 timeout_multiplier = 10.0
 timeout_constant = 1.0
 
