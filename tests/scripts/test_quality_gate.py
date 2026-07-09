@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import subprocess
 import sys
-import tomllib
 from pathlib import Path
+
+import tomllib
 
 from scripts import quality_gate
 
