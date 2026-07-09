@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import tomllib
+from pathlib import Path
 
 from scripts import quality_gate
 
@@ -116,9 +118,6 @@ def test_quality_gate_help() -> None:
 
 
 def test_mutmut_config_uses_dedicated_pytest_ini() -> None:
-    import tomllib
-    from pathlib import Path
-
     data = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
     mutmut = data["tool"]["mutmut"]
 

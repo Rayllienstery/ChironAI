@@ -1,6 +1,10 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.55] - 2026-07-09
+### Fixed
+- CI hotfix: ruff import order in `test_mutmut_config_uses_dedicated_pytest_ini`.
+
 ## [0.8.54] - 2026-07-09
 ### Fixed
 - Mutation testing: dedicated `mutmut_pytest.ini` (`import-mode=prepend`), `also_copy`, disable `mutate_only_covered_lines`; clear `mutants/` before CI capture.
