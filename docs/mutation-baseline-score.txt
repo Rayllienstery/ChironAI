@@ -1,12 +1,12 @@
 # Mutation baseline score (advisory)
 
-Updated from `linux-fast` tag CI via `scripts/capture_mutation_baseline.sh`.
+Updated from tag CI `release` job via `scripts/capture_mutation_baseline.sh`.
 Full log: `mutation-baseline.txt` (CI artifact on `v*` tags).
 
-status=ci_no_scores_v0.8.53
-captured_at=2026-07-08T15:50:39Z
+status=ci_truncated_v0.8.55
+captured_at=2026-07-09T15:51:53Z
 killed=
 survived=
 timeout=
 skipped=
-note=v0.8.53: PYTHONPATH fix allowed 153 tests to run but mutmut stopped with "no test case for any mutant" (import-mode / mutate_only_covered_lines). Fixed in 0.8.54 via mutmut_pytest.ini; expect scores on v0.8.54 tag CI.
+note=v0.8.55 rerun: artifact truncated — `linux-fast` job timeout (20 min) killed mutmut during "Generating mutants". Fixed in 0.8.56 by moving capture to `release` job (60 min). Expect full scores on v0.8.56 tag CI.

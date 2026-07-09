@@ -1,6 +1,12 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.56] - 2026-07-09
+### Fixed
+- Mutation baseline CI: move `capture_mutation_baseline.sh` from `linux-fast` (20 min job timeout) to `release` job (60 min) so mutmut can finish on tag builds.
+### Changed
+- Document truncated `v0.8.55` mutation artifact in `docs/mutation-baseline-score.txt`.
+
 ## [0.8.55] - 2026-07-09
 ### Fixed
 - CI hotfix: ruff import order in `test_mutmut_config_uses_dedicated_pytest_ini`.

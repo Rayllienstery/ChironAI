@@ -119,7 +119,7 @@ Baseline status on **2026-07-07**:
 | Environment | `mutmut run` | Baseline capture |
 |-------------|--------------|------------------|
 | Native Windows | **Unsupported** (mutmut 3.6+) | Use WSL Linux distro or CI |
-| Linux CI (`linux-fast` on `v*` tags) | Advisory via `scripts/capture_mutation_baseline.sh` | `mutation-baseline.txt` artifact + `docs/mutation-baseline-score.txt` |
+| Linux CI (`release` on `v*` tags) | Advisory via `scripts/capture_mutation_baseline.sh` (45 min step; job timeout 60 min) | `mutation-baseline.txt` artifact + `docs/mutation-baseline-score.txt` |
 | Local Linux / WSL | `python scripts/quality_gate.py --profile mutation --include-advisory` | Same script |
 
 `mutmut_pytest.ini` (copied into `mutants/` via `also_copy`) uses `--import-mode=prepend` and package-aligned `pythonpath` so mutant module keys match pytest imports. `capture_mutation_baseline.sh` exports quality_gate `PYTHONPATH` and clears `mutants/` before each capture.
