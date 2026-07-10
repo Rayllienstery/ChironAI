@@ -3,10 +3,13 @@
 Updated from tag CI `release` job via `scripts/capture_mutation_baseline.sh`.
 Full log: `mutation-baseline.txt` (CI artifact on `v*` tags).
 
-status=ci_clean_test_fail_v0.8.58
-captured_at=2026-07-10T08:44:31Z
-killed=
-survived=
-timeout=
-skipped=
-note=v0.8.58: import-path fix worked (32 mutants, stats OK) but mutmut clean-test failed on Hypothesis property test test_markdown_meta_property.py (differing_executors). Fixed in 0.8.59 by excluding property tests from mutmut selection. Expect scores on v0.8.59 tag CI.
+status=ok_v0.8.59
+captured_at=2026-07-10T09:06:50Z
+tag=v0.8.59
+killed=0
+survived=2543
+timeout=14
+no_tests=334
+total=2891
+mutation_score_pct=0.0
+note=First full mutmut run on tag CI. Scope: domain/* + rag_service/domain/* (32 source files mutated). 0% killed — advisory baseline for trend tracking; improve tests or narrow only_mutate over time.

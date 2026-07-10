@@ -1,6 +1,10 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.60] - 2026-07-10
+### Changed
+- Record first mutation baseline score from `v0.8.59` tag CI in `docs/mutation-baseline-score.txt` (2891 mutants, advisory).
+
 ## [0.8.59] - 2026-07-10
 ### Fixed
 - Mutation baseline: exclude Hypothesis property tests from mutmut selection (clean-test `differing_executors` failure in CI).

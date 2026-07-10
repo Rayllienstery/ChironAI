@@ -124,7 +124,7 @@ Baseline status on **2026-07-07**:
 
 `mutmut_pytest.ini` uses `--import-mode=prepend`. `capture_mutation_baseline.sh` stages `domain/` and `rag_service/` at repo root (import-aligned paths), exports quality_gate `PYTHONPATH`, pre-creates `mutants/tests/`, and cleans staging dirs after capture.
 
-Promotion: when a tag CI run produces `mutmut results` with killed/survived counts, copy the summary into `docs/mutation-baseline-score.txt`. `capture_mutation_baseline.sh` exports the same `PYTHONPATH` as `quality_gate.py` so mutmut module keys match pytest imports.
+Promotion: when a tag CI run produces `mutmut results` with killed/survived counts, copy the summary into `docs/mutation-baseline-score.txt`. **Baseline (v0.8.59):** 2891 mutants — 0 killed, 2543 survived, 14 timeout, 334 no tests (0.0% advisory score).
 
 Previous note (2026-06-21): configured on Windows workstation but no numeric score; WSL default distro was `docker-desktop` without bash. Use a full Linux distro or CI.
 
