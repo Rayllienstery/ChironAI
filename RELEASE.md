@@ -2,6 +2,21 @@
 
 Short gate before tagging a release. Run from repo root unless noted.
 
+## Release candidate 0.8.62 notes
+
+Status: **post-STABLE hygiene** — mutation baseline auto-record verified on tag `v0.8.62` CI (2026-07-10).
+
+Highlights (0.8.61–0.8.62):
+
+- **`record_mutation_baseline_score.py`:** parses mutmut log and refreshes `docs/mutation-baseline-score.txt` after capture.
+- CI artifact includes both `mutation-baseline.txt` and score tracker; stable trend vs `v0.8.59`/`v0.8.61`.
+- Tracker: **2891** mutants (0 killed, 2543 survived, 14 timeout, 334 no tests; 0.0% advisory score on `v0.8.62`).
+
+Verification snapshot (2026-07-10):
+
+- Tag `v0.8.62` CI `release` green ([run 29100133738](https://github.com/Rayllienstery/ChironAI/actions/runs/29100133738)); mutation artifact contains auto-written score file.
+- `python scripts/check_version_drift.py` — passed (0.8.62).
+
 ## Release candidate 0.8.60 notes
 
 Status: **post-STABLE hygiene** — mutation baseline captured on tag `v0.8.59` CI (2026-07-10).

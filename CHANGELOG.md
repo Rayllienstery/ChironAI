@@ -1,6 +1,12 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.63] - 2026-07-10
+### Changed
+- RELEASE.md 0.8.62 section: mutation auto-record verified on tag CI.
+- Sync `docs/mutation-baseline-score.txt` from `v0.8.62` CI artifact (stable 2891-mutant trend).
+- Regenerate API reference for 0.8.63.
+
 ## [0.8.62] - 2026-07-10
 ### Added
 - `scripts/record_mutation_baseline_score.py` — parse mutmut log and update `docs/mutation-baseline-score.txt` automatically.
