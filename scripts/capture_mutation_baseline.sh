@@ -6,6 +6,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 export PYTHONPATH="$(python scripts/print_quality_gate_pythonpath.py)"
 rm -rf mutants
+# mutmut 3.6 copy_also_copy_files() uses shutil.copy2 without mkdir parents
+mkdir -p mutants/tests
 OUT_DIR="$ROOT/reports/baseline"
 OUT_FILE="$OUT_DIR/mutation-baseline.txt"
 mkdir -p "$OUT_DIR"

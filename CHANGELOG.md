@@ -1,6 +1,12 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.57] - 2026-07-10
+### Fixed
+- Mutation baseline capture: pre-create `mutants/tests/` before `mutmut run` (mutmut 3.6 `also_copy` nested path bug).
+### Changed
+- Document `v0.8.56` mutmut `FileNotFoundError` in `docs/mutation-baseline-score.txt`.
+
 ## [0.8.56] - 2026-07-09
 ### Fixed
 - Mutation baseline CI: move `capture_mutation_baseline.sh` from `linux-fast` (20 min job timeout) to `release` job (60 min) so mutmut can finish on tag builds.

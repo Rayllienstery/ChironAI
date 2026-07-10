@@ -3,10 +3,10 @@
 Updated from tag CI `release` job via `scripts/capture_mutation_baseline.sh`.
 Full log: `mutation-baseline.txt` (CI artifact on `v*` tags).
 
-status=ci_truncated_v0.8.55
-captured_at=2026-07-09T15:51:53Z
+status=ci_error_v0.8.56
+captured_at=2026-07-09T16:16:46Z
 killed=
 survived=
 timeout=
 skipped=
-note=v0.8.55 rerun: artifact truncated — `linux-fast` job timeout (20 min) killed mutmut during "Generating mutants". Fixed in 0.8.56 by moving capture to `release` job (60 min). Expect full scores on v0.8.56 tag CI.
+note=v0.8.56 release job: mutmut FileNotFoundError copying also_copy tests/conftest.py — mutmut 3.6 does not mkdir mutants/tests/ before shutil.copy2. Fixed in 0.8.57 (mkdir -p mutants/tests in capture script). Expect scores on v0.8.57 tag CI.

@@ -122,7 +122,7 @@ Baseline status on **2026-07-07**:
 | Linux CI (`release` on `v*` tags) | Advisory via `scripts/capture_mutation_baseline.sh` (45 min step; job timeout 60 min) | `mutation-baseline.txt` artifact + `docs/mutation-baseline-score.txt` |
 | Local Linux / WSL | `python scripts/quality_gate.py --profile mutation --include-advisory` | Same script |
 
-`mutmut_pytest.ini` (copied into `mutants/` via `also_copy`) uses `--import-mode=prepend` and package-aligned `pythonpath` so mutant module keys match pytest imports. `capture_mutation_baseline.sh` exports quality_gate `PYTHONPATH` and clears `mutants/` before each capture.
+`mutmut_pytest.ini` (copied into `mutants/` via `also_copy`) uses `--import-mode=prepend` and package-aligned `pythonpath` so mutant module keys match pytest imports. `capture_mutation_baseline.sh` exports quality_gate `PYTHONPATH`, clears `mutants/`, and pre-creates `mutants/tests/` (workaround for mutmut 3.6 `also_copy` nested paths).
 
 Promotion: when a tag CI run produces `mutmut results` with killed/survived counts, copy the summary into `docs/mutation-baseline-score.txt`. `capture_mutation_baseline.sh` exports the same `PYTHONPATH` as `quality_gate.py` so mutmut module keys match pytest imports.
 
