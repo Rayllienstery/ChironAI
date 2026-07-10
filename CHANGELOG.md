@@ -1,6 +1,10 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.61] - 2026-07-10
+### Changed
+- RELEASE.md 0.8.60 section: mutation baseline capture wave (P2.6/P3.8 sign-off).
+
 ## [0.8.60] - 2026-07-10
 ### Changed
 - Record first mutation baseline score from `v0.8.59` tag CI in `docs/mutation-baseline-score.txt` (2891 mutants, advisory).

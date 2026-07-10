@@ -2,6 +2,22 @@
 
 Short gate before tagging a release. Run from repo root unless noted.
 
+## Release candidate 0.8.60 notes
+
+Status: **post-STABLE hygiene** — mutation baseline captured on tag `v0.8.59` CI (2026-07-10).
+
+Highlights (0.8.58–0.8.60):
+
+- **P2.6/P3.8 closed:** first advisory mutmut baseline on tag CI (`release` job, 60 min timeout).
+- Import-path staging (`domain/`, `rag_service/`), Hypothesis property tests excluded from mutmut selection.
+- Tracker: `docs/mutation-baseline-score.txt` — **2891** mutants (0 killed, 2543 survived, 14 timeout, 334 no tests; 0.0% advisory score on `v0.8.59`).
+
+Verification snapshot (2026-07-10):
+
+- `python scripts/check_version_drift.py` — passed (0.8.60).
+- Tag `v0.8.59` CI `release` + `linux-fast` green; mutation artifact uploaded.
+- `npm run bundle:budget` (CoreUI) — passed at budget ceiling.
+
 ## Release candidate 0.8.52 notes
 
 Status: **released** — tag `v0.8.52`, CI `release` + `linux-fast` green, GitHub Release published, local `startup_smoke_bat` PASS (2026-07-08).
