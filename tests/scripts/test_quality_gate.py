@@ -125,5 +125,8 @@ def test_mutmut_config_uses_dedicated_pytest_ini() -> None:
     assert mutmut["mutate_only_covered_lines"] is False
     assert mutmut["source_paths"] == ["domain", "rag_service"]
     assert mutmut["only_mutate"] == ["domain/*", "rag_service/domain/*"]
+    selection = mutmut["pytest_add_cli_args_test_selection"]
+    assert "tests/domain/test_markdown_meta_property.py" not in selection
+    assert "tests/domain" not in selection
     assert "mutmut_pytest.ini" in mutmut["also_copy"]
     assert Path("mutmut_pytest.ini").is_file()

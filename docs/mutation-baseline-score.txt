@@ -3,10 +3,10 @@
 Updated from tag CI `release` job via `scripts/capture_mutation_baseline.sh`.
 Full log: `mutation-baseline.txt` (CI artifact on `v*` tags).
 
-status=ci_module_mismatch_v0.8.57
-captured_at=2026-07-10T08:07:10Z
+status=ci_clean_test_fail_v0.8.58
+captured_at=2026-07-10T08:44:31Z
 killed=
 survived=
 timeout=
 skipped=
-note=v0.8.57: mutmut generated 32 mutants but stopped — trampoline keys domain.* vs mutant keys Core.domain.* (pytest pythonpath Core/). Fixed in 0.8.58 via staged domain/ + rag_service/ trees and only_mutate. Expect scores on v0.8.58 tag CI.
+note=v0.8.58: import-path fix worked (32 mutants, stats OK) but mutmut clean-test failed on Hypothesis property test test_markdown_meta_property.py (differing_executors). Fixed in 0.8.59 by excluding property tests from mutmut selection. Expect scores on v0.8.59 tag CI.

@@ -1,6 +1,12 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.59] - 2026-07-10
+### Fixed
+- Mutation baseline: exclude Hypothesis property tests from mutmut selection (clean-test `differing_executors` failure in CI).
+### Changed
+- Document `v0.8.58` mutmut clean-test failure in `docs/mutation-baseline-score.txt`.
+
 ## [0.8.58] - 2026-07-10
 ### Fixed
 - Mutation baseline: stage `domain/` and `rag_service/` for import-aligned mutmut keys; `only_mutate` scopes; skip `Core/` path injection in conftest when `MUTANT_UNDER_TEST`.

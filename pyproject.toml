@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chironai"
-version = "0.8.58"
+version = "0.8.59"
 description = "Modular RAG platform (Ollama + Qdrant) with WebUI and crawl/index pipelines. Configured for Apple platforms, supports any domain."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -66,7 +66,7 @@ Homepage = "https://github.com/Rayllienstery/ChironAI"
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.8.58"
+version = "0.8.59"
 version_files = [
   "Core/core/version.py:VERSION",
   "pyproject.toml:version",
@@ -341,7 +341,14 @@ also_copy = [
   "tests/conftest.py",
 ]
 pytest_add_cli_args_test_selection = [
-  "tests/domain",
+  "tests/domain/test_chunking.py",
+  "tests/domain/test_markdown_meta.py",
+  "tests/domain/test_metadata_inference.py",
+  "tests/domain/test_prompt_builder.py",
+  "tests/domain/test_rag_trigger.py",
+  "tests/domain/test_rerank.py",
+  "tests/domain/test_retrieval.py",
+  "tests/domain/test_retrieval_expansion.py",
   "tests/rag_service/test_retrieval.py",
   "tests/rag_service/test_core_engine.py",
   "tests/rag_service/test_rag_pipeline_integration.py",
