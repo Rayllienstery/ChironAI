@@ -3,13 +3,14 @@
 Updated from tag CI `release` job via `scripts/capture_mutation_baseline.sh`.
 Full log: `mutation-baseline.txt` (CI artifact on `v*` tags).
 
-status=ok_v0.8.59
-captured_at=2026-07-10T09:06:50Z
-tag=v0.8.59
+status=ok_v0.8.61
+captured_at=2026-07-10T13:17:12Z
+tag=v0.8.61
 killed=0
 survived=2543
 timeout=14
+skipped=0
 no_tests=334
 total=2891
 mutation_score_pct=0.0
-note=First full mutmut run on tag CI. Scope: domain/* + rag_service/domain/* (32 source files mutated). 0% killed — advisory baseline for trend tracking; improve tests or narrow only_mutate over time.
+note=Stable trend vs v0.8.59 (2891 mutants, 0% advisory). Score file now auto-written by capture_mutation_baseline.sh.

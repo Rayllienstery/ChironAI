@@ -208,7 +208,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: mutation-baseline
-          path: reports/baseline/mutation-baseline.txt
+          path: |
+            reports/baseline/mutation-baseline.txt
+            docs/mutation-baseline-score.txt
           if-no-files-found: ignore
 
       - name: Upload coverage to Codecov

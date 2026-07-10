@@ -38,4 +38,10 @@ mkdir -p "$OUT_DIR"
   mutmut results 2>&1 | grep -Ei 'killed|survived|timeout|skipped' || true
 } | tee "$OUT_FILE"
 
+TAG_ARG=()
+if [[ -n "${GITHUB_REF_NAME:-}" && "${GITHUB_REF_NAME}" == v* ]]; then
+  TAG_ARG=(--tag "${GITHUB_REF_NAME}")
+fi
+python scripts/record_mutation_baseline_score.py "$OUT_FILE" "${TAG_ARG[@]}"
+
 echo "Wrote $OUT_FILE"

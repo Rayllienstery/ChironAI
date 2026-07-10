@@ -122,9 +122,9 @@ Baseline status on **2026-07-07**:
 | Linux CI (`release` on `v*` tags) | Advisory via `scripts/capture_mutation_baseline.sh` (45 min step; job timeout 60 min) | `mutation-baseline.txt` artifact + `docs/mutation-baseline-score.txt` |
 | Local Linux / WSL | `python scripts/quality_gate.py --profile mutation --include-advisory` | Same script |
 
-`mutmut_pytest.ini` uses `--import-mode=prepend`. `capture_mutation_baseline.sh` stages `domain/` and `rag_service/` at repo root (import-aligned paths), exports quality_gate `PYTHONPATH`, pre-creates `mutants/tests/`, and cleans staging dirs after capture.
+`mutmut_pytest.ini` uses `--import-mode=prepend`. `capture_mutation_baseline.sh` stages `domain/` and `rag_service/` at repo root (import-aligned paths), exports quality_gate `PYTHONPATH`, pre-creates `mutants/tests/`, runs `scripts/record_mutation_baseline_score.py` to refresh `docs/mutation-baseline-score.txt`, and cleans staging dirs after capture.
 
-Promotion: when a tag CI run produces `mutmut results` with killed/survived counts, copy the summary into `docs/mutation-baseline-score.txt`. **Baseline (v0.8.59):** 2891 mutants — 0 killed, 2543 survived, 14 timeout, 334 no tests (0.0% advisory score).
+**Baseline (v0.8.59 / v0.8.61):** 2891 mutants — 0 killed, 2543 survived, 14 timeout, 334 no tests (0.0% advisory score). Score tracker is updated automatically on tag CI; commit the tracker on the next hygiene bump when trend is confirmed.
 
 Previous note (2026-06-21): configured on Windows workstation but no numeric score; WSL default distro was `docker-desktop` without bash. Use a full Linux distro or CI.
 

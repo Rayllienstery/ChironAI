@@ -118,6 +118,14 @@ def test_quality_gate_help() -> None:
     assert "quality gates" in result.stdout.lower()
 
 
+def test_capture_mutation_baseline_script_records_score() -> None:
+    text = Path("scripts/capture_mutation_baseline.sh").read_text(encoding="utf-8")
+
+    assert "record_mutation_baseline_score.py" in text
+    assert "GITHUB_REF_NAME" in text
+    assert "v*" in text
+
+
 def test_mutmut_config_uses_dedicated_pytest_ini() -> None:
     data = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
     mutmut = data["tool"]["mutmut"]

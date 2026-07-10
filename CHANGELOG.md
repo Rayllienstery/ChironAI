@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.62] - 2026-07-10
+### Added
+- `scripts/record_mutation_baseline_score.py` — parse mutmut log and update `docs/mutation-baseline-score.txt` automatically.
+### Changed
+- `capture_mutation_baseline.sh` invokes score recorder after capture; CI artifact includes score tracker.
+- Confirm stable mutation baseline on `v0.8.61` tag CI (2891 mutants, 0.0% advisory; matches `v0.8.59`).
+
 ## [0.8.61] - 2026-07-10
 ### Changed
 - RELEASE.md 0.8.60 section: mutation baseline capture wave (P2.6/P3.8 sign-off).
