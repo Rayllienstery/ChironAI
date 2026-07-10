@@ -1,6 +1,12 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.8.58] - 2026-07-10
+### Fixed
+- Mutation baseline: stage `domain/` and `rag_service/` for import-aligned mutmut keys; `only_mutate` scopes; skip `Core/` path injection in conftest when `MUTANT_UNDER_TEST`.
+### Changed
+- Document `v0.8.57` module-path mismatch in `docs/mutation-baseline-score.txt`.
+
 ## [0.8.57] - 2026-07-10
 ### Fixed
 - Mutation baseline capture: pre-create `mutants/tests/` before `mutmut run` (mutmut 3.6 `also_copy` nested path bug).

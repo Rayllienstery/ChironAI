@@ -5,7 +5,16 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 export PYTHONPATH="$(python scripts/print_quality_gate_pythonpath.py)"
-rm -rf mutants
+
+cleanup_staging() {
+  rm -rf domain rag_service
+}
+trap cleanup_staging EXIT
+
+rm -rf domain rag_service mutants
+# Stage import-aligned package trees (mutmut keys must match pytest imports).
+cp -a Core/domain domain
+cp -a CoreModules/RagService/rag_service rag_service
 # mutmut 3.6 copy_also_copy_files() uses shutil.copy2 without mkdir parents
 mkdir -p mutants/tests
 OUT_DIR="$ROOT/reports/baseline"

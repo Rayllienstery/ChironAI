@@ -123,5 +123,7 @@ def test_mutmut_config_uses_dedicated_pytest_ini() -> None:
     mutmut = data["tool"]["mutmut"]
 
     assert mutmut["mutate_only_covered_lines"] is False
+    assert mutmut["source_paths"] == ["domain", "rag_service"]
+    assert mutmut["only_mutate"] == ["domain/*", "rag_service/domain/*"]
     assert "mutmut_pytest.ini" in mutmut["also_copy"]
     assert Path("mutmut_pytest.ini").is_file()

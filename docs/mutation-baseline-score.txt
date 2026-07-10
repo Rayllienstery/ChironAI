@@ -3,10 +3,10 @@
 Updated from tag CI `release` job via `scripts/capture_mutation_baseline.sh`.
 Full log: `mutation-baseline.txt` (CI artifact on `v*` tags).
 
-status=ci_error_v0.8.56
-captured_at=2026-07-09T16:16:46Z
+status=ci_module_mismatch_v0.8.57
+captured_at=2026-07-10T08:07:10Z
 killed=
 survived=
 timeout=
 skipped=
-note=v0.8.56 release job: mutmut FileNotFoundError copying also_copy tests/conftest.py — mutmut 3.6 does not mkdir mutants/tests/ before shutil.copy2. Fixed in 0.8.57 (mkdir -p mutants/tests in capture script). Expect scores on v0.8.57 tag CI.
+note=v0.8.57: mutmut generated 32 mutants but stopped — trampoline keys domain.* vs mutant keys Core.domain.* (pytest pythonpath Core/). Fixed in 0.8.58 via staged domain/ + rag_service/ trees and only_mutate. Expect scores on v0.8.58 tag CI.
