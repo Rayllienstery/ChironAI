@@ -16,7 +16,8 @@ Verification snapshot (2026-07-10):
 
 - `python scripts/check_version_drift.py` — passed (0.9.0).
 - `python scripts/quality_gate.py --profile release --include-advisory` — passed locally (Windows).
-- Tag `v0.9.0` — GitHub Release published as **prerelease**.
+- Tag `v0.9.0` CI `release` green ([run 29108379025](https://github.com/Rayllienstery/ChironAI/actions/runs/29108379025)); mutation artifact stable (2891 mutants).
+- GitHub Release published as **prerelease**: [v0.9.0 PRE-RELEASE](https://github.com/Rayllienstery/ChironAI/releases/tag/v0.9.0).
 
 ## Release candidate 0.8.63 notes
 

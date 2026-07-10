@@ -159,7 +159,7 @@ jobs:
 
   release:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 45
     if: startsWith(github.ref, 'refs/tags/v')
 
     steps:
@@ -198,21 +198,6 @@ jobs:
       - name: Run release quality gate
         run: python scripts/quality_gate.py --profile release --include-advisory
 
-      - name: Capture mutation baseline (advisory)
-        continue-on-error: true
-        timeout-minutes: 45
-        run: bash scripts/capture_mutation_baseline.sh
-
-      - name: Upload mutation baseline artifact
-        continue-on-error: true
-        uses: actions/upload-artifact@v4
-        with:
-          name: mutation-baseline
-          path: |
-            reports/baseline/mutation-baseline.txt
-            docs/mutation-baseline-score.txt
-          if-no-files-found: ignore
-
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
@@ -229,6 +214,38 @@ jobs:
           format: table
           vuln-type: os,library
           severity: HIGH,CRITICAL
+
+  mutation-baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    if: startsWith(github.ref, 'refs/tags/v')
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements-dev.txt
+            pyproject.toml
+
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Capture mutation baseline (advisory)
+        run: bash scripts/capture_mutation_baseline.sh
+
+      - name: Upload mutation baseline artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-baseline
+          path: |
+            reports/baseline/mutation-baseline.txt
+            docs/mutation-baseline-score.txt
+          if-no-files-found: ignore
 
   linux-fast:
     runs-on: ubuntu-latest

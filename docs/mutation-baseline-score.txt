@@ -1,11 +1,11 @@
 # Mutation baseline score (advisory)
 
-Updated from tag CI `release` job via `scripts/capture_mutation_baseline.sh`.
+Updated from tag CI `mutation-baseline` job via `scripts/capture_mutation_baseline.sh`.
 Full log: `mutation-baseline.txt` (CI artifact on `v*` tags).
 
-status=ok_v0.8.62
-captured_at=2026-07-10T14:46:35Z
-tag=v0.8.62
+status=ok_v0.9.0
+captured_at=2026-07-10T17:23:25Z
+tag=v0.9.0
 killed=0
 survived=2543
 timeout=14
@@ -13,4 +13,4 @@ skipped=0
 no_tests=334
 total=2891
 mutation_score_pct=0.0
-note=Auto-recorded on v0.8.62 tag CI (run 29100133738). Stable trend vs v0.8.59/v0.8.61.
+note=Auto-recorded on v0.9.0 tag CI (run 29108379025). Stable trend vs v0.8.59–v0.8.63.
