@@ -37,3 +37,8 @@ Adopt **local-only by default** (option 1) for the STABLE line:
 - Pre-Release P1.1, P1.2, P1.18, P1.20
 - ADR 0007 (custom providers — API keys server-side)
 - `SECURITY.md` — Known Security Boundaries
+
+## Version line note (2026-07-10)
+
+- **0.8.x STABLE** (`v0.8.63` and earlier STABLE tags): production/local conservative track; ADR 0008 applies as written.
+- **0.9.x PRE-RELEASE**: active development line; same auth model until built-in auth (P1.1.2) is prioritized; not recommended for untrusted network exposure.

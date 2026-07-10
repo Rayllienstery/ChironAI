@@ -1,6 +1,6 @@
 """ChironAI version information."""
 
-VERSION = "0.8.63"
+VERSION = "0.9.0"
 APP_NAME = "Chiron AI"
-APP_STAGE = "STABLE"
-VERSION_SUBTITLE = "Security"
+APP_STAGE = "PRE-RELEASE"
+VERSION_SUBTITLE = "Pre-Release"

@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.9.0] - 2026-07-10
+### Changed
+- Start **0.9.x PRE-RELEASE** line: `APP_STAGE` → `PRE-RELEASE` (0.8.63 remains the last **STABLE** tag).
+- PyPI classifier → `Development Status :: 4 - Beta` for the prerelease line.
+- Regenerate API reference for 0.9.0.
+### Added
+- RELEASE.md sections for 0.8.63 (last STABLE) and 0.9.0 PRE-RELEASE.
+- README and SECURITY.md version guidance for 0.9.x prerelease vs 0.8.x STABLE.
+- `.tmp_artifacts/` gitignore + root layout guard classification.
+
 ## [0.8.63] - 2026-07-10
 ### Changed
 - RELEASE.md 0.8.62 section: mutation auto-record verified on tag CI.

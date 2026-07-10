@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chironai"
-version = "0.8.63"
+version = "0.9.0"
 description = "Modular RAG platform (Ollama + Qdrant) with WebUI and crawl/index pipelines. Configured for Apple platforms, supports any domain."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -12,7 +12,7 @@ license = { text = "MIT" }
 authors = [{ name = "ChironAI contributors" }]
 keywords = ["rag", "ollama", "qdrant", "flask"]
 classifiers = [
-  "Development Status :: 5 - Production/Stable",
+  "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.10",
@@ -66,7 +66,7 @@ Homepage = "https://github.com/Rayllienstery/ChironAI"
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.8.63"
+version = "0.9.0"
 version_files = [
   "Core/core/version.py:VERSION",
   "pyproject.toml:version",

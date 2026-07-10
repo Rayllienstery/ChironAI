@@ -6,6 +6,7 @@ The following versions of ChironAI currently receive security updates:
 
 | Version | Supported          |
 | ------- | ------------------ |
+| 0.9.x   | :warning: prerelease — not recommended for production exposure |
 | 0.8.x   | :white_check_mark: |
 | 0.7.x   | :white_check_mark: |
 | < 0.7.0 | :x:                |
@@ -34,7 +35,7 @@ We aim to acknowledge reports within 5 business days and will coordinate disclos
 
 ## Authentication model (ADR 0008)
 
-ChironAI **0.8.x** does not ship WebUI login. Security relies on **network placement**:
+ChironAI **0.8.x STABLE** and **0.9.x PRE-RELEASE** do not ship WebUI login. Security relies on **network placement**:
 
 | Surface | Auth today | Mitigation |
 |---------|------------|------------|

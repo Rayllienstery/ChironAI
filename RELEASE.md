@@ -2,6 +2,37 @@
 
 Short gate before tagging a release. Run from repo root unless noted.
 
+## Release candidate 0.9.0 notes
+
+Status: **PRE-RELEASE** — first tag on the 0.9.x line (`v0.9.0`, 2026-07-10). `v0.8.63` remains the last **STABLE** tag.
+
+Highlights (0.9.0):
+
+- `APP_STAGE` → `PRE-RELEASE`; PyPI classifier → Beta for the prerelease line.
+- Version surfaces synced to 0.9.0; API reference regenerated.
+- README / SECURITY / ADR 0008 document 0.9.x vs 0.8.x version guidance.
+
+Verification snapshot (2026-07-10):
+
+- `python scripts/check_version_drift.py` — passed (0.9.0).
+- `python scripts/quality_gate.py --profile release --include-advisory` — passed locally (Windows).
+- Tag `v0.9.0` — GitHub Release published as **prerelease**.
+
+## Release candidate 0.8.63 notes
+
+Status: **released** — last **STABLE** line tag before 0.9.x PRE-RELEASE (`v0.8.63`, 2026-07-10).
+
+Highlights (0.8.63):
+
+- RELEASE.md 0.8.62 section: mutation auto-record verified on tag CI.
+- Sync `docs/mutation-baseline-score.txt` from `v0.8.62` CI artifact (stable 2891-mutant trend).
+- Regenerate API reference for 0.8.63.
+
+Verification snapshot (2026-07-10):
+
+- Tag `v0.8.63` CI `release` green ([run 29104037002](https://github.com/Rayllienstery/ChironAI/actions/runs/29104037002)).
+- `python scripts/check_version_drift.py` — passed (0.8.63).
+
 ## Release candidate 0.8.62 notes
 
 Status: **post-STABLE hygiene** — mutation baseline auto-record verified on tag `v0.8.62` CI (2026-07-10).

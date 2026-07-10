@@ -29,6 +29,7 @@ ALLOWED_ROOT_DIRECTORIES: dict[str, RootEntry] = {
     ".mypy_cache": RootEntry("project support", "tool cache"),
     ".ruff_cache": RootEntry("project support", "tool cache"),
     ".tmp_openwebui_data": RootEntry("temporary", "local runtime data"),
+    ".tmp_artifacts": RootEntry("temporary", "local CI and mutation artifacts"),
     ".tmp_test_local": RootEntry("temporary", "local test data"),
     ".vscode": RootEntry("project support", "editor metadata"),
     "chironai.egg-info": RootEntry("project support", "packaging metadata"),
