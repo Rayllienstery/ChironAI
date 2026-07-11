@@ -59,18 +59,23 @@
   width: 32px;
   height: 32px;
   border-radius: var(--md-sys-shape-corner-medium);
-  background: var(--coreui-sidenav-active-bg);
-  color: var(--coreui-sidenav-active-fg);
+  background: #fafaf8;
   display: flex;
   align-items: center;
   justify-content: center;
-  font: var(--md-sys-typescale-title-small-font);
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+.coreui-sidebar__logo img,
+.coreui-sidebar__logo svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .app.app--sidebar-collapsed .coreui-sidebar__logo {
-  background: var(--coreui-sidenav-rail-logo-bg);
-  color: var(--coreui-sidenav-rail-fg);
+  background: #fafaf8;
 }
 
 .coreui-sidebar__title {

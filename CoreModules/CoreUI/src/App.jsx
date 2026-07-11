@@ -799,12 +799,12 @@ function App() {
   };
 
   const allTabs = [
-    { id: "dashboard", label: t("nav.dashboard"), section: "Main" },
-    { id: "docker", label: t("nav.docker"), section: "Main", iconUrl: DockerTabIcon },
-    { id: "tokens-security", label: t("nav.tokens_security"), section: "Main" },
-    { id: "logs", label: t("nav.logs"), section: "Main" },
-    { id: "dependencies", label: t("nav.dependencies"), section: "Main" },
-    { id: "help", label: t("nav.help"), section: "Main", icon: "help" },
+    { id: "dashboard", label: t("nav.dashboard") },
+    { id: "docker", label: t("nav.docker"), iconUrl: DockerTabIcon },
+    { id: "tokens-security", label: t("nav.tokens_security") },
+    { id: "logs", label: t("nav.logs") },
+    { id: "dependencies", label: t("nav.dependencies") },
+    { id: "help", label: t("nav.help"), icon: "help" },
     { id: "llm-proxy", label: t("nav.llm_proxy"), section: "Core Functionality" },
     { id: "providers", label: t("nav.providers"), section: "Core Functionality" },
     { id: "rag-fusion-proxy", label: t("nav.rag_fusion_proxy"), section: "Core Functionality" },

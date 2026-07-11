@@ -12,10 +12,28 @@ _ASSET_MIME = {
     ".svg": "image/svg+xml",
     ".json": "application/json",
     ".html": "text/html",
+    ".png": "image/png",
+    ".ico": "image/x-icon",
     ".woff2": "font/woff2",
     ".woff": "font/woff",
     ".ttf": "font/ttf",
 }
+
+
+def _no_cache(resp):
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
+def _serve_build_root_file(react_build_dir: str, filename: str, *, mimetype: str | None = None):
+    file_path = os.path.join(react_build_dir, filename)
+    if not os.path.isfile(file_path):
+        return "File not found", 404
+    resp = send_from_directory(react_build_dir, filename, max_age=0)
+    if mimetype:
+        resp.headers["Content-Type"] = mimetype
+    return _no_cache(resp)
 
 
 def _asset_mime_type(filename: str) -> str:
@@ -27,6 +45,27 @@ def register_webui_static_routes(app: Flask, *, frontend_dir: str) -> None:
     """Serve React build (or legacy HTML) under /webui and /assets."""
     react_build_dir = os.path.join(frontend_dir, "dist")
     react_build_index = os.path.join(react_build_dir, "index.html")
+
+    @app.route("/favicon.ico")
+    def root_favicon_ico():
+        """Browsers probe /favicon.ico at the site root before parsing HTML."""
+        return _serve_build_root_file(react_build_dir, "favicon-32.png", mimetype="image/png")
+
+    @app.route("/favicon.svg")
+    def root_favicon_svg():
+        return _serve_build_root_file(react_build_dir, "favicon.svg", mimetype="image/svg+xml")
+
+    @app.route("/favicon-<int:size>.png")
+    def root_favicon_png(size: int):
+        return _serve_build_root_file(
+            react_build_dir,
+            f"favicon-{size}.png",
+            mimetype="image/png",
+        )
+
+    @app.route("/apple-touch-icon.png")
+    def root_apple_touch_icon():
+        return _serve_build_root_file(react_build_dir, "apple-touch-icon.png", mimetype="image/png")
 
     @app.route("/webui")
     @app.route("/webui/")

@@ -6,6 +6,7 @@ import {
   useState,
 } from "react";
 import Card from "./Card";
+import ChironaiLogo from "./ChironaiLogo";
 
 const LS_WIDTH = "coreui.sidebar.width";
 const LS_COLLAPSED = "coreui.sidebar.collapsed";
@@ -299,7 +300,7 @@ function SidebarNav({
       <div className="coreui-sidebar__header">
         <div className="coreui-sidebar__brand">
           <div className="coreui-sidebar__logo" aria-hidden="true">
-            C
+            <ChironaiLogo size={32} />
           </div>
           <span className="coreui-sidebar__title">ChironAI</span>
         </div>
