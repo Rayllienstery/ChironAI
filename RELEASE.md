@@ -2,6 +2,33 @@
 
 Short gate before tagging a release. Run from repo root unless noted.
 
+## Release candidate 0.10.0 notes
+
+Status: **PRE-RELEASE** — `v0.10.0` closes the v0.10.0 tech-debt milestone (`2026-07-13`). `v0.8.63` remains the last **STABLE** tag.
+
+Highlights (0.10.0):
+
+- Closed TD-P0.1, TD-P0.2, TD-P1.1, TD-P1.2, TD-P1.3.
+- Version surfaces synced to 0.10.0; API reference regenerated.
+- CoreUI bundle budget baseline bumped to 1761280 bytes; `bundle:budget` PASS.
+- `lint-imports` PASS after adding `CoreModules/Localization` to dev requirements.
+- Mutation score documented as advisory/trend-only.
+
+Verification snapshot (2026-07-13):
+
+- `python scripts/check_version_drift.py` — passed (0.10.0).
+- `python scripts/quality_gate.py --profile release --include-advisory` — passed locally (Windows). Required steps all green.
+- CoreUI bundle budget: PASS at 1693802 bytes (budget 1761280 bytes).
+- CoreUI unit tests: PASS (208 tests).
+- `lint-imports`: PASS.
+- `python scripts/gen_api_docs.py --check` — PASS (regenerated for 0.10.0).
+
+### Known release gate gaps (advisory, non-blocking)
+
+- `coreui-i18n-lint` remains advisory: hardcoded UI strings and 2 untranslated `uk` keys (`about.github_label`, `about.linkedin_label`). Not a release blocker.
+- `startup-smoke-sh` fails on native Windows because `bash` is unavailable; `startup-smoke-bat` covers the same smoke on Windows.
+- `trivy-image` is skipped locally because the `trivy` executable is not installed; it runs in CI release workflow.
+
 ## Release candidate 0.9.0 notes
 
 Status: **PRE-RELEASE** — first tag on the 0.9.x line (`v0.9.0`, 2026-07-10). `v0.8.63` remains the last **STABLE** tag.
@@ -22,7 +49,7 @@ Verification snapshot (2026-07-13, after TD-P0.1 / TD-P0.2 / TD-P1.1 / TD-P1.2):
 - Tag `v0.9.0` CI `release` green ([run 29108379025](https://github.com/Rayllienstery/ChironAI/actions/runs/29108379025)); mutation artifact stable (2891 mutants).
 - GitHub Release published as **prerelease**: [v0.9.0 PRE-RELEASE](https://github.com/Rayllienstery/ChironAI/releases/tag/v0.9.0).
 
-### Known release gate gaps (until v0.10.0)
+### Known release gate gaps (historical; resolved or documented in v0.10.0)
 
 - Mutation score is **advisory / trend-only** (0.0% on 2891 mutants). It is recorded by tag CI but is **not** used as a blocking metric. Promotion to required is deferred post-v0.10.0.
 - `coreui-i18n-lint` remains advisory: 1391 hardcoded UI strings and 2 untranslated `uk` keys (`about.github_label`, `about.linkedin_label`). Not a release blocker.

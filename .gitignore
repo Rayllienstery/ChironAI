@@ -132,6 +132,7 @@ tests/_tmp_*
 tests/*.tmp
 PROJECT_EVALUATION.md
 Pre-Release.md
+TECH_DEBT_TODO.md
 .tmp_artifacts/
 *.db
 *.sqlite

@@ -7,7 +7,7 @@ For humans and AI assistants: terminology, module boundaries, what to keep in sy
 ## 1. Purpose
 
 - **Goal:** quickly locate the Web UI stack, how CoreUI talks to the backend, Python layer boundaries, and the fragile spots.
-- **Non-goal:** replace `docs/ARCHITECTURE.md` or per-module READMEs—when in doubt, open the references in section 9.
+- **Non-goal:** replace `docs/ARCHITECTURE.md` or per-module READMEs—when in doubt, open the references in section 11.
 
 ---
 
@@ -147,6 +147,15 @@ In practice:
 - After changing CoreUI `.jsx`, `.tsx`, `.js`, or `.ts` files that are rendered by Vite/React, run the CoreUI production build or an equivalent parser/lint check before finishing. This specifically guards against malformed JSX such as stray template literals, duplicated `className` fragments, or accidental text inserted between an opening tag and its children.
 - If the check cannot be run, the final response must say so explicitly and include the reason. Do not finish UI code changes without either a successful check or a clearly reported verification gap.
 
+### CoreUI bundle budget and unit tests
+
+- The CoreUI JavaScript bundle has a tracked budget enforced by `npm run bundle:budget` in `scripts/quality_gate.py`. If your change grows the bundle, you must either:
+  1. Split the new code into a lazy-loaded chunk.
+  2. Remove accidental non-lazy imports in `App.jsx` or shared entry points.
+  3. Intentionally bump the budget baseline with a justification in `CHANGELOG.md` and a comment in `CoreModules/CoreUI/scripts/bundle_budget.mjs`.
+- Do not let the budget drift silently; gate failures here block the release profile.
+- Run `npm run test:run` and `npm run test:coverage` after any CoreUI change that affects components, hooks, or services. A single failing React test currently blocks `coreui-test` and `coreui-coverage` in the full/release gate.
+
 ### Code layout (as in the repo)
 
 - `CoreModules/CoreUI/src/components/` — screens, tabs, modals.
@@ -189,7 +198,14 @@ Layers (top to bottom): **`Core/api/`** → **`Core/application/`** → **`Core/
   - **`Core/api/http/webui_routes.py`** — HTTP composition for the UI.
   Do not merge them back without a strong reason—this split is intentional for tests and evolution.
 
-### 5.1 LogsManager (internal LLM only)
+### 5.1 Exception handling hygiene
+
+- Avoid bare or overly broad `except Exception:` in new code. Catch the specific exception types the call site can reasonably produce (`requests.RequestException`, `subprocess.SubprocessError`, `ValueError`, `KeyError`, `FileNotFoundError`, etc.).
+- If you must catch `Exception` (e.g., compatibility shims, teardown, defensive runtime probes), add a `# nosec` comment with a one-line justification and log the exception at `warning` or `error` level. Do not swallow silently.
+- When refactoring existing broad catches, preserve observable behavior: if the original code returned a fallback dict or `None`, keep that contract and add a test for the error path.
+- Use `scripts/audit_silent_exceptions.py` (advisory) to find candidates for narrowing.
+
+### 5.2 LogsManager (internal LLM only)
 
 - **Purpose:** debug RAG Fusion proxy requests from Cursor agents and internal repo scripts.
 - **Not a public API:** do not add `/api/webui` routes or CoreUI surfaces for LogsManager.
@@ -255,6 +271,8 @@ Change carefully; if behavior shifts, document and align with team/repo norms.
 4. **Qdrant / retrieval** — multiple modes (dense, hybrid, name compatibility); edits to `CoreModules/RagService/.../qdrant_repository.py` and mirrors under `Core/infrastructure/qdrant/` must stay aligned.
 5. **Service control** — Qdrant Web UI call paths delegate to `CoreModules/RagService`; extension service actions must use DockerManager host capabilities.
 
+6. **WebUI LAN exposure** — sensitive management routes under `/api/webui/llm-proxy/*` and similar must not assume the client is local. When the server is bound to `0.0.0.0`, any reachable client can read proxy status/builds. Add loopback or API-key guards for sensitive read endpoints; add tests for both loopback and non-loopback clients.
+
 Risk and “tail” summary: `docs/legacy_map.md`.
 
 ---
@@ -264,6 +282,12 @@ Risk and “tail” summary: `docs/legacy_map.md`.
 - **Version Increment:** Every time a task is completed that involves changing at least one file in the project code, the version must be incremented: `X.Y.Z` -> `X.Y.(Z+1)`.
 - **Source of Truth:** The canonical version is stored in `Core/core/version.py`.
 - **CHANGELOG.md:** Must be updated for every version bump. Use a concise bulleted list to describe **what** was done, but **not how** it was done.
+
+### Release gate verification
+
+- Before claiming that a release is ready, run `python scripts/quality_gate.py --profile release` on the primary development environment (Windows 11 + Docker Desktop). Do not rely only on `minimal` or `full`.
+- If the release gate fails, capture the failing step names and either fix them or update `Pre-Release.md` / `RELEASE.md` with an accurate "Known gaps" section. Do not let release documentation claim a green gate while it is red.
+- For CoreUI-only changes, at minimum run the CoreUI subset: `npm run build`, `npm run bundle:budget`, `npm run test:run`, `npm run test:coverage`, `npm run lint`, `npm run typecheck`.
 
 ### Runtime smoke check
 
@@ -289,10 +313,41 @@ Risk and “tail” summary: `docs/legacy_map.md`.
     - [ ] Is the `create_provider` entry point implemented?
     - [ ] If it needs Docker, does it use only `host_context.docker_runtime` + `DockerContainerSpec`?
 - [ ] **Version bumped and CHANGELOG.md updated?**
+- [ ] If the change touches broad `except Exception:` blocks: are they narrowed to specific exceptions with tests for the error path?
+- [ ] If the change affects CoreUI: does `npm run bundle:budget` still pass, and do `npm run test:run` / `npm run test:coverage` pass?
+- [ ] If the change adds or exposes a sensitive WebUI route: is it protected when the server binds to non-loopback addresses?
+- [ ] If the task closes a tech-debt item: is `TECH_DEBT_TODO.md` updated (status, notes, new items discovered)?
 
 ---
 
-## 10. Further reading
+## 10. Technical debt and AI agent workflow
+
+### 10.1 `TECH_DEBT_TODO.md` is the local backlog
+
+- `TECH_DEBT_TODO.md` is a scratchpad for known technical debt. It is in `.gitignore` and must not be committed.
+- Before starting a non-trivial task, read it to see if your change overlaps with an open debt item.
+- After closing a debt item, update its status and add a short note about what changed.
+- If your work reveals new debt, add it to the backlog with a priority, acceptance criteria, and file references.
+
+### 10.2 How to close tech-debt tasks
+
+1. **Read the linked files and adjacent tests first.** Do not change code without understanding the current contract.
+2. **Start with the smallest verifiable step.** For example, fix one failing CoreUI test before refactoring the whole tab.
+3. **Run the relevant gate subset before finishing.** Do not rely on "it should work"; run the actual command.
+4. **Preserve contracts.** If a route, function, or file is public (imported by tests or other modules), keep its signature or add a compatibility shim with a deprecation note.
+5. **Document intentional trade-offs.** If you bump a bundle budget, widen an exception catch, or skip a migration, explain why in code comments and `CHANGELOG.md`.
+6. **Update metrics.** After broad-exception cleanup or module split, update the count in `TECH_DEBT_TODO.md`.
+
+### 10.3 Priority conventions
+
+- **P0** — blocks release gate or has security impact. Fix before claiming the task done.
+- **P1** — breaks tooling or erodes trust in gates. Fix in the same sprint.
+- **P2** — slows development but has a workaround. Schedule explicitly.
+- **P3** — polish. Pick up opportunistically.
+
+---
+
+## 11. Further reading
 
 | Document / module | Purpose |
 |-------------------|---------|

@@ -1,9 +1,19 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.10.0] - 2026-07-13
+
+### Fixed
+- TD-P0.2: CoreUI `AboutTab.test.jsx` updated to match the actual UI (`h1` = `ChironAI`, removed non-existent `h2` assertion); 208 unit tests pass.
+- TD-P1.1: Added editable install `-e CoreModules/Localization` to `requirements-dev.txt` so `lint-imports` resolves the `localization` package.
+
+### Changed
+- TD-P0.1: Intentionally bumped CoreUI JS bundle budget baseline from 1684096 to 1761280 bytes (measured 1693802 + 64 KiB headroom, rounded to 4 KiB); `bundle:budget` and minimal gate PASS.
+- TD-P1.2: Documented mutation score as advisory/trend-only in `docs/QUALITY_GATE_PROFILES.md`, `docs/mutation-baseline-score.txt`, and `RELEASE.md`; 0.0% on 2891 mutants does not block release.
+- TD-P1.3: Updated `RELEASE.md` 0.9.0 verification snapshot with actual post-tech-debt gate results.
+
 ## [0.9.0] - 2026-07-10
 ### Changed
-- CoreUI: intentionally bump JS bundle budget baseline to 1761280 bytes (measured 1693802 + 64 KiB headroom) for v0.10.0.
 - Start **0.9.x PRE-RELEASE** line: `APP_STAGE` → `PRE-RELEASE` (0.8.63 remains the last **STABLE** tag).
 - PyPI classifier → `Development Status :: 4 - Beta` for the prerelease line.
 - Regenerate API reference for 0.9.0.
