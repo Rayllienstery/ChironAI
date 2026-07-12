@@ -4,7 +4,7 @@ Short gate before tagging a release. Run from repo root unless noted.
 
 ## Release candidate 0.10.2 notes
 
-Status: **PRE-RELEASE** — tag `v0.10.2` (2026-07-12). `v0.8.63` remains the last **STABLE** tag.
+Status: **released (PRE-RELEASE)** — tag `v0.10.2` (2026-07-12). `v0.8.63` remains the last **STABLE** tag.
 
 Highlights (0.10.1–0.10.2):
 
