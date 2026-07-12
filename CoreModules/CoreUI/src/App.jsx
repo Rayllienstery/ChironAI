@@ -105,6 +105,7 @@ const LAZY_MODULES = {
   TokensSecurityTab: () => import("./components/TokensSecurityTab"),
   HelpTab: () => import("./components/help/HelpTab"),
   ProvidersTab: () => import("./components/providers/ProvidersTab"),
+  AboutTab: () => import("./components/AboutTab"),
 };
 
 const TAB_MODULE_KEYS = {
@@ -125,6 +126,7 @@ const TAB_MODULE_KEYS = {
   "tokens-security": "TokensSecurityTab",
   help: "HelpTab",
   providers: "ProvidersTab",
+  about: "AboutTab",
 };
 
 const IDLE_PREFETCH_TAB_IDS = [
@@ -144,6 +146,7 @@ const IDLE_PREFETCH_TAB_IDS = [
   "swagger",
   "coreui-showcase",
   "settings",
+  "about",
 ];
 
 const IDLE_PREFETCH_EXTRA_MODULES = [
@@ -173,6 +176,7 @@ const DockerTab = lazyWithRetry("DockerTab", LAZY_MODULES.DockerTab);
 const TokensSecurityTab = lazyWithRetry("TokensSecurityTab", LAZY_MODULES.TokensSecurityTab);
 const HelpTab = lazyWithRetry("HelpTab", LAZY_MODULES.HelpTab);
 const ProvidersTab = lazyWithRetry("ProvidersTab", LAZY_MODULES.ProvidersTab);
+const AboutTab = lazyWithRetry("AboutTab", LAZY_MODULES.AboutTab);
 
 import DockerTabIcon from "./assets/docker-mark.svg?url";
 import Card from "./components/Card";
@@ -805,6 +809,7 @@ function App() {
     { id: "logs", label: t("nav.logs") },
     { id: "dependencies", label: t("nav.dependencies") },
     { id: "help", label: t("nav.help"), icon: "help" },
+    { id: "about", label: t("nav.about"), icon: "info" },
     { id: "llm-proxy", label: t("nav.llm_proxy"), section: "Core Functionality" },
     { id: "providers", label: t("nav.providers"), section: "Core Functionality" },
     { id: "rag-fusion-proxy", label: t("nav.rag_fusion_proxy"), section: "Core Functionality" },
@@ -946,6 +951,8 @@ function App() {
             onInitialSlugConsumed={() => setHelpInitialSlug(null)}
           />
         );
+      case "about":
+        return <AboutTab appVersion={appVersion} />;
       case "coreui-showcase":
         return <CoreUIShowcaseTab />;
       case "settings":

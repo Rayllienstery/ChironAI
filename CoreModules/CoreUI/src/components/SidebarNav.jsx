@@ -49,6 +49,7 @@ const TAB_MATERIAL_ICONS = {
   "tokens-security": "key",
   dependencies: "inventory_2",
   performance: "speed",
+  about: "info",
 };
 
 function iconLooksLikeAssetPath(icon) {
