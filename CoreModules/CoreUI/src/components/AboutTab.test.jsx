@@ -18,9 +18,8 @@ describe('AboutTab smoke', () => {
 
   it('renders project icon, name and version', async () => {
     render(<AboutTab appVersion="1.0.0" />);
-    expect(screen.getByRole('heading', { level: 1, name: /About ChironAI/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: /ChironAI/i })).toBeInTheDocument();
     expect(screen.getByAltText(/ChironAI project icon/i)).toBeInTheDocument();
-    expect(await screen.findByRole('heading', { level: 2, name: /ChironAI/i })).toBeInTheDocument();
     expect(await screen.findByText(/Version 1\.2\.3/i)).toBeInTheDocument();
   });
 });

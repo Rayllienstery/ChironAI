@@ -12,12 +12,20 @@ Highlights (0.9.0):
 - Version surfaces synced to 0.9.0; API reference regenerated.
 - README / SECURITY / ADR 0008 document 0.9.x vs 0.8.x version guidance.
 
-Verification snapshot (2026-07-10):
+Verification snapshot (2026-07-13, after TD-P0.1 / TD-P0.2 / TD-P1.1 / TD-P1.2):
 
 - `python scripts/check_version_drift.py` — passed (0.9.0).
-- `python scripts/quality_gate.py --profile release --include-advisory` — passed locally (Windows).
+- `python scripts/quality_gate.py --profile release --include-advisory` — passed locally (Windows). Required steps all green. Advisory failures: `coreui-i18n-lint` (1391 hardcoded UI strings, 2 untranslated `uk` keys) and `startup-smoke-sh` (skipped on native Windows; `startup-smoke-bat` passed).
+- CoreUI bundle budget: PASS at 1693802 bytes (budget 1761280 bytes) after TD-P0.1 baseline bump.
+- CoreUI unit tests: PASS (208 tests) after TD-P0.2 AboutTab test fix.
+- `lint-imports`: PASS after TD-P1.1 added `CoreModules/Localization` to `requirements-dev.txt`.
 - Tag `v0.9.0` CI `release` green ([run 29108379025](https://github.com/Rayllienstery/ChironAI/actions/runs/29108379025)); mutation artifact stable (2891 mutants).
 - GitHub Release published as **prerelease**: [v0.9.0 PRE-RELEASE](https://github.com/Rayllienstery/ChironAI/releases/tag/v0.9.0).
+
+### Known release gate gaps (until v0.10.0)
+
+- Mutation score is **advisory / trend-only** (0.0% on 2891 mutants). It is recorded by tag CI but is **not** used as a blocking metric. Promotion to required is deferred post-v0.10.0.
+- `coreui-i18n-lint` remains advisory: 1391 hardcoded UI strings and 2 untranslated `uk` keys (`about.github_label`, `about.linkedin_label`). Not a release blocker.
 
 ## Release candidate 0.8.63 notes
 

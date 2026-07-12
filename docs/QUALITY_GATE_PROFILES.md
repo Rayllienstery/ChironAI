@@ -16,7 +16,7 @@ python scripts/quality_gate.py --profile mutation --include-advisory
 | `minimal` | Every PR / local pre-push | See [minimal](#minimal) below |
 | `full` | Main branch / nightly | `minimal` + [full extras](#full-extras) |
 | `strict-lint` | Incremental ruff expansion | `ruff` with import (`I`) and selected bugbear rules |
-| `mutation` | Advisory mutation baseline | `mutmut run` (advisory unless promoted) |
+| `mutation` | Advisory mutation baseline | `mutmut run` (advisory; score is trend-only and does not block release) |
 | `release` | Pre-tag / deploy candidate | `full` + [release extras](#release-extras) |
 
 ### minimal
@@ -100,6 +100,7 @@ Linux without a manual editable install.
 - Pass `--include-advisory` to execute advisory steps and count their failures on `full` / `release` / `mutation`.
 - The oversized-file audit is required in `full`; generated files and documented baseline exceptions are excluded from hard failure.
 - Mutation testing is advisory and expected to run on Linux/WSL. Native Windows `mutmut` may exit early; use WSL or CI Linux for baseline score collection.
+- The mutation score is **advisory / trend-only**. A 0.0% score does **not** block a release or fail the gate. Promote it to required only after the project establishes a stable, non-zero baseline and documents the promotion in this file and in `RELEASE.md`.
 
 ## Mutation baseline
 

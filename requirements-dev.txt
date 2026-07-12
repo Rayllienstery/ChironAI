@@ -18,6 +18,7 @@
 -e CoreModules/ExtensionsSandbox
 -e CoreModules/ExtensionsHost
 -e CoreModules/ErrorManager
+-e CoreModules/Localization
 -e Core/modules/html_md
 -e Core/modules/crawler_service
 -e Core/modules/webui_backend

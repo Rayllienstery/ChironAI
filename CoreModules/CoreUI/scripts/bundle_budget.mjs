@@ -2,7 +2,9 @@ import fs from 'fs';
 import path from 'path';
 
 const distAssets = path.resolve('dist', 'assets');
-const totalJsBudgetBytes = 1684096;
+// AboutTab + favicon assets (v0.10.0 tech-debt)
+// Baseline = measured total + 64 KiB headroom, rounded up to 4 KiB.
+const totalJsBudgetBytes = 1761280;
 
 if (!fs.existsSync(distAssets)) {
   console.error('Bundle budget check failed: dist/assets does not exist. Run npm run build first.');
