@@ -29,7 +29,7 @@
   "dependencies": {
     "@alerix/m3-loading-indicator": "^1.0.5",
     "@fontsource/material-symbols-outlined": "^5.2.45",
-    "dompurify": "^3.4.10",
+    "dompurify": "^3.4.11",
     "highlight.js": "^11.11.1",
     "marked": "^11.1.1",
     "marked-highlight": "^2.2.4",
