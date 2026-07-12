@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chironai"
-version = "0.10.0"
+version = "0.10.2"
 description = "Modular RAG platform (Ollama + Qdrant) with WebUI and crawl/index pipelines. Configured for Apple platforms, supports any domain."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -34,6 +34,7 @@ dependencies = [
   "lxml>=6.1.0",
   "prometheus-client>=0.20",
   "waitress>=3.0.0",
+  "bcrypt>=4.0",
 ]
 
 [project.optional-dependencies]
@@ -66,7 +67,7 @@ Homepage = "https://github.com/Rayllienstery/ChironAI"
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.10.0"
+version = "0.10.2"
 version_files = [
   "Core/core/version.py:VERSION",
   "pyproject.toml:version",

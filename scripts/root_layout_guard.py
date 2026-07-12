@@ -26,6 +26,7 @@ ALLOWED_ROOT_DIRECTORIES: dict[str, RootEntry] = {
     ".hypothesis": RootEntry("project support", "tool cache"),
     ".import_linter_cache": RootEntry("project support", "tool cache"),
     ".kilo": RootEntry("project support", "agent metadata"),
+    ".opencode": RootEntry("project support", "agent metadata"),
     ".mypy_cache": RootEntry("project support", "tool cache"),
     ".ruff_cache": RootEntry("project support", "tool cache"),
     ".tmp_openwebui_data": RootEntry("temporary", "local runtime data"),

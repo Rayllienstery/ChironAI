@@ -3,8 +3,8 @@
 > Generated from the live OpenAPI document. Do not edit by hand; run `python scripts/gen_api_docs.py`.
 
 - OpenAPI: `3.1.0`
-- Version: `0.10.0`
-- Paths: `135`
+- Version: `0.10.2`
+- Paths: `137`
 
 Chiron AI PRE-RELEASE OpenAPI description generated from Flask routes.
 
@@ -1423,6 +1423,73 @@ Responses:
 | Status | Description | Schema |
 |--------|-------------|--------|
 | 200 | OK | application/json: GenericObject |
+
+#### `DELETE /api/webui/llm-proxy/reveal-pin`
+
+**Summary:** Delete llm proxy reveal pin
+
+Registered Flask endpoint `webui.llm_proxy_disable_reveal_pin` for `DELETE /api/webui/llm-proxy/reveal-pin`. Payload shape is currently described generically until the route is promoted into core contracts.
+
+- Operation ID: `webui_llm_proxy_disable_reveal_pin_delete`
+- Flask endpoint: `webui.llm_proxy_disable_reveal_pin`
+- Request body: `application/json: GenericObject`
+
+Responses:
+
+| Status | Description | Schema |
+|--------|-------------|--------|
+| 200 | OK | application/json: GenericObject |
+| 400 | Bad request | application/json: ErrorResponse |
+
+#### `GET /api/webui/llm-proxy/reveal-pin`
+
+**Summary:** Get llm proxy reveal pin
+
+Registered Flask endpoint `webui.llm_proxy_reveal_pin_status` for `GET /api/webui/llm-proxy/reveal-pin`. Payload shape is currently described generically until the route is promoted into core contracts.
+
+- Operation ID: `webui_llm_proxy_reveal_pin_status_get`
+- Flask endpoint: `webui.llm_proxy_reveal_pin_status`
+- Request body: `-`
+
+Responses:
+
+| Status | Description | Schema |
+|--------|-------------|--------|
+| 200 | OK | application/json: GenericObject |
+
+#### `POST /api/webui/llm-proxy/reveal-pin`
+
+**Summary:** Create llm proxy reveal pin
+
+Registered Flask endpoint `webui.llm_proxy_set_reveal_pin` for `POST /api/webui/llm-proxy/reveal-pin`. Payload shape is currently described generically until the route is promoted into core contracts.
+
+- Operation ID: `webui_llm_proxy_set_reveal_pin_post`
+- Flask endpoint: `webui.llm_proxy_set_reveal_pin`
+- Request body: `application/json: GenericObject`
+
+Responses:
+
+| Status | Description | Schema |
+|--------|-------------|--------|
+| 200 | OK | application/json: GenericObject |
+| 400 | Bad request | application/json: ErrorResponse |
+
+#### `DELETE /api/webui/llm-proxy/reveal-pin/lockout`
+
+**Summary:** Delete llm proxy reveal pin lockout
+
+Registered Flask endpoint `webui.llm_proxy_reset_reveal_pin_lockout` for `DELETE /api/webui/llm-proxy/reveal-pin/lockout`. Payload shape is currently described generically until the route is promoted into core contracts.
+
+- Operation ID: `webui_llm_proxy_reset_reveal_pin_lockout_delete`
+- Flask endpoint: `webui.llm_proxy_reset_reveal_pin_lockout`
+- Request body: `application/json: GenericObject`
+
+Responses:
+
+| Status | Description | Schema |
+|--------|-------------|--------|
+| 200 | OK | application/json: GenericObject |
+| 400 | Bad request | application/json: ErrorResponse |
 
 #### `GET /api/webui/llm-proxy/status`
 

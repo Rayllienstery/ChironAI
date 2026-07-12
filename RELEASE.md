@@ -2,6 +2,32 @@
 
 Short gate before tagging a release. Run from repo root unless noted.
 
+## Release candidate 0.10.2 notes
+
+Status: **PRE-RELEASE** — tag `v0.10.2` (2026-07-12). `v0.8.63` remains the last **STABLE** tag.
+
+Highlights (0.10.1–0.10.2):
+
+- **Remote Reveal PIN:** LAN clients can reveal the Chiron proxy API key with a 4–8 digit PIN; lockout after 3 failed attempts; loopback-only PIN install/change/disable and lockout reset (`reveal_pin.py`, WebUI Remote Access card).
+- **Logs PIN (0.10.2):** same reveal PIN gates LAN access to WebUI log observability routes (`GET/DELETE /logs`, `/proxy-logs`, `/proxy-traces`, `/proxy-journal`); CoreUI `RemoteRevealPinGate` on the Logs tab.
+- TD-S1.1–S1.3 closed; `SECURITY.md`, `README.md`, `WebUI_LAN_AUTH.md` updated; dual-client UI guardrails in `AI_RULES.md` §10.4.
+
+Verification snapshot (2026-07-12):
+
+- `python scripts/check_version_drift.py` — passed (0.10.2).
+- `python scripts/quality_gate.py --profile release --include-advisory` — passed locally (Windows) after classifying `.opencode/` in `root_layout_guard.py`. Required steps all green.
+- CoreUI bundle budget: PASS at 1702903 bytes (budget 1761280 bytes).
+- CoreUI unit tests: PASS (213 tests).
+- `lint-imports`: PASS.
+- `python scripts/gen_api_docs.py --check` — PASS (regenerated for 0.10.2).
+- pytest fast gate: PASS (1126 tests; observability + proxy auth PIN coverage included).
+
+### Known release gate gaps (advisory, non-blocking)
+
+- `coreui-i18n-lint` remains advisory: hardcoded UI strings and untranslated `uk` keys. Not a release blocker.
+- `startup-smoke-sh` fails on native Windows because `bash` is unavailable; `startup-smoke-bat` covers the same smoke on Windows.
+- `trivy-image` is skipped locally because the `trivy` executable is not installed; it runs in CI release workflow.
+
 ## Release candidate 0.10.0 notes
 
 Status: **released (PRE-RELEASE)** — tag `v0.10.0` (`2026-07-13`). `v0.8.63` remains the last **STABLE** tag.

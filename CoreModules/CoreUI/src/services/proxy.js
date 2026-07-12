@@ -1,4 +1,12 @@
 import { API_BASE, extractApiError } from './http.js';
+import { withRemoteRevealPinInit, setRemoteRevealPin } from './remoteRevealPin.js';
+
+function throwProxyApiError(data, fallback, response) {
+  const err = new Error(extractApiError(data, fallback));
+  err.code = data?.code || null;
+  err.status = response?.status;
+  throw err;
+}
 
 export async function getLlmProxyStatus() {
   const response = await fetch(`${API_BASE}/llm-proxy/status`);
@@ -31,13 +39,21 @@ export async function generateLlmProxyApiKey() {
   return data;
 }
 
-export async function revealLlmProxyApiKey() {
-  const response = await fetch(`${API_BASE}/llm-proxy/api-key/reveal`, {
+export async function revealLlmProxyApiKey(pin = null) {
+  const options = {
     method: 'POST',
-  });
+  };
+  if (pin) {
+    setRemoteRevealPin(pin);
+    options.headers = { 'Content-Type': 'application/json' };
+    options.body = JSON.stringify({ pin });
+  }
+  const response = await fetch(`${API_BASE}/llm-proxy/api-key/reveal`, withRemoteRevealPinInit(options));
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(extractApiError(data, 'Failed to reveal LLM Proxy API key'));
+    const err = new Error(extractApiError(data, 'Failed to reveal LLM Proxy API key'));
+    err.code = data?.code || null;
+    throw err;
   }
   return data;
 }
@@ -49,6 +65,74 @@ export async function deleteLlmProxyApiKey() {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(extractApiError(data, 'Failed to delete LLM Proxy API key'));
+  }
+  return data;
+}
+
+export async function getRevealPinStatus() {
+  const response = await fetch(`${API_BASE}/llm-proxy/reveal-pin`, {
+    cache: 'no-store',
+    headers: { 'Cache-Control': 'no-cache' },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(extractApiError(data, 'Failed to get reveal PIN status'));
+  }
+  return data;
+}
+
+export async function setRevealPin(pin) {
+  const response = await fetch(`${API_BASE}/llm-proxy/reveal-pin`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pin }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const err = new Error(extractApiError(data, 'Failed to set reveal PIN'));
+    err.code = data?.code || null;
+    throw err;
+  }
+  return data;
+}
+
+export async function changeRevealPin(currentPin, newPin) {
+  const response = await fetch(`${API_BASE}/llm-proxy/reveal-pin`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ current_pin: currentPin, new_pin: newPin }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const err = new Error(extractApiError(data, 'Failed to change reveal PIN'));
+    err.code = data?.code || null;
+    throw err;
+  }
+  return data;
+}
+
+export async function disableRevealPin(pin) {
+  const response = await fetch(`${API_BASE}/llm-proxy/reveal-pin`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pin }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const err = new Error(extractApiError(data, 'Failed to disable reveal PIN'));
+    err.code = data?.code || null;
+    throw err;
+  }
+  return data;
+}
+
+export async function resetRevealPinLockout() {
+  const response = await fetch(`${API_BASE}/llm-proxy/reveal-pin/lockout`, {
+    method: 'DELETE',
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(extractApiError(data, 'Failed to reset reveal PIN lockout'));
   }
   return data;
 }
@@ -108,11 +192,11 @@ export async function clearProxyLogs(options = {}) {
   }
   const response = await fetch(
     `${API_BASE}/proxy-logs${params.toString() ? `?${params}` : ''}`,
-    {
+    withRemoteRevealPinInit({
       method: 'DELETE',
       cache: 'no-store',
       headers: { 'Cache-Control': 'no-cache' },
-    },
+    }),
   );
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
@@ -129,38 +213,52 @@ export async function getProxyLogs(options = {}) {
   if (from != null && from !== '') params.set('from', from);
   if (to != null && to !== '') params.set('to', to);
   if (autocompleteOnly) params.set('autocomplete_only', '1');
-  const response = await fetch(`${API_BASE}/proxy-logs?${params}`, {
-    cache: 'no-store',
-    headers: { 'Cache-Control': 'no-cache' },
-  });
+  const response = await fetch(
+    `${API_BASE}/proxy-logs?${params}`,
+    withRemoteRevealPinInit({
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache' },
+    }),
+  );
   if (!response.ok) {
-    throw new Error('Failed to get proxy logs');
+    const data = await response.json().catch(() => ({}));
+    throwProxyApiError(data, 'Failed to get proxy logs', response);
   }
   return response.json();
 }
 
 export async function getProxyTraceCurrent() {
-  const response = await fetch(`${API_BASE}/proxy-trace/current`, {
-    method: 'GET',
-  });
+  const response = await fetch(
+    `${API_BASE}/proxy-trace/current`,
+    withRemoteRevealPinInit({ method: 'GET' }),
+  );
   if (!response.ok) {
-    throw new Error('Failed to get proxy trace');
+    const data = await response.json().catch(() => ({}));
+    throwProxyApiError(data, 'Failed to get proxy trace', response);
   }
   return response.json();
 }
 
 export async function getProxyTraces(limit = 40) {
-  const response = await fetch(`${API_BASE}/proxy-traces?limit=${encodeURIComponent(limit)}`);
+  const response = await fetch(
+    `${API_BASE}/proxy-traces?limit=${encodeURIComponent(limit)}`,
+    withRemoteRevealPinInit({ method: 'GET' }),
+  );
   if (!response.ok) {
-    throw new Error('Failed to get proxy traces');
+    const data = await response.json().catch(() => ({}));
+    throwProxyApiError(data, 'Failed to get proxy traces', response);
   }
   return response.json();
 }
 
 export async function clearProxyTraces() {
-  const response = await fetch(`${API_BASE}/proxy-traces/clear`, { method: 'POST' });
+  const response = await fetch(
+    `${API_BASE}/proxy-traces/clear`,
+    withRemoteRevealPinInit({ method: 'POST' }),
+  );
   if (!response.ok) {
-    throw new Error('Failed to clear proxy traces');
+    const data = await response.json().catch(() => ({}));
+    throwProxyApiError(data, 'Failed to clear proxy traces', response);
   }
   return response.json();
 }
@@ -173,7 +271,10 @@ export async function getProxyJournal(options = {}) {
   if (offset != null) params.set('offset', String(offset));
   if (from != null && from !== '') params.set('from', from);
   if (to != null && to !== '') params.set('to', to);
-  const response = await fetch(`${API_BASE}/proxy-journal?${params}`);
+  const response = await fetch(
+    `${API_BASE}/proxy-journal?${params}`,
+    withRemoteRevealPinInit({ method: 'GET' }),
+  );
   const data = await response.json().catch(() => ({}));
   if (!response.ok || !data.ok) {
     throw new Error(extractApiError(data, 'Failed to load proxy journal'));
@@ -182,7 +283,10 @@ export async function getProxyJournal(options = {}) {
 }
 
 export async function clearProxyJournal() {
-  const response = await fetch(`${API_BASE}/proxy-journal`, { method: 'DELETE' });
+  const response = await fetch(
+    `${API_BASE}/proxy-journal`,
+    withRemoteRevealPinInit({ method: 'DELETE' }),
+  );
   const data = await response.json().catch(() => ({}));
   if (!response.ok || !data.ok) {
     throw new Error(extractApiError(data, 'Failed to clear proxy journal'));

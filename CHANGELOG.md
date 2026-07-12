@@ -1,6 +1,22 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.10.2] - 2026-07-12
+
+### Added
+- Remote reveal PIN now gates LAN access to WebUI log observability routes (`GET/DELETE /logs`, `/proxy-logs`, `/proxy-traces`, `/proxy-journal`). CoreUI shows a PIN gate on the Logs tab from LAN; the same in-memory session PIN is reused after API key reveal.
+
+### Changed
+- Classify `.opencode/` in `root_layout_guard.py` (local agent metadata; gitignored).
+
+## [0.10.1] - 2026-07-12
+
+### Added
+- Remote reveal PIN: LAN clients can reveal the Chiron proxy API key with a 4–8 digit PIN; lockout after 3 failed attempts; loopback-only PIN install/change/disable and lockout reset (`reveal_pin.py`, WebUI Remote Access card).
+
+### Fixed
+- TD-S1.2: `TokensSecurityTab` now fetches real `GET /llm-proxy/reveal-pin` status on loopback (no stub); LAN reveal uses refreshed status before opening the PIN modal. Behavioral Vitest coverage for PIN UI states.
+
 ## [0.10.0] - 2026-07-13
 
 ### Fixed

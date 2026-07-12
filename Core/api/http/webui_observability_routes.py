@@ -17,7 +17,13 @@ from api.http.proxy_trace import (
     get_current_trace_updated_at,
     recent_proxy_traces,
 )
-from infrastructure.database import get_logs_repository, get_notifications_repository
+from api.http.webui_trusted_client import check_remote_reveal_pin
+from infrastructure.database import get_logs_repository, get_notifications_repository, get_settings_repository
+
+
+def _require_remote_reveal_pin_for_logs() -> Any | None:
+    """Gate sensitive log reads/writes from non-loopback clients."""
+    return check_remote_reveal_pin(request, get_settings_repository())
 
 
 def _parse_since_id_query(raw: str | None) -> int | None:
@@ -75,6 +81,9 @@ def register_observability_routes(bp: Blueprint, *, error_log: Any) -> None:
     def get_logs() -> Any:
         """Return recent log entries from database."""
         try:
+            denied = _require_remote_reveal_pin_for_logs()
+            if denied is not None:
+                return denied
             session_id = request.args.get("session_id")
             limit = int(request.args.get("limit", 100))
             level = request.args.get("level", "").upper() or None
@@ -227,6 +236,9 @@ def register_observability_routes(bp: Blueprint, *, error_log: Any) -> None:
     def get_proxy_logs() -> Any:
         """Return proxy logs from database (``session_id=proxy``, ``source=proxy``)."""
         try:
+            denied = _require_remote_reveal_pin_for_logs()
+            if denied is not None:
+                return denied
             limit = int(request.args.get("limit", 100))
             since_id_val = _parse_since_id_query(request.args.get("since_id"))
             from_date = request.args.get("from")
@@ -276,6 +288,9 @@ def register_observability_routes(bp: Blueprint, *, error_log: Any) -> None:
     def get_proxy_trace_current() -> Any:
         """Return the latest live trace from in-memory store."""
         try:
+            denied = _require_remote_reveal_pin_for_logs()
+            if denied is not None:
+                return denied
             trace = get_current_trace()
             active_traces = get_active_traces()
             updated_at = get_current_trace_updated_at()
@@ -294,6 +309,9 @@ def register_observability_routes(bp: Blueprint, *, error_log: Any) -> None:
     @bp.route("/proxy-traces", methods=["GET"])
     def get_proxy_traces() -> Any:
         """Ring-buffer snapshots of LLM proxy traces, UI-oriented JSON."""
+        denied = _require_remote_reveal_pin_for_logs()
+        if denied is not None:
+            return denied
         try:
             lim_raw = request.args.get("limit", "40")
             limit = max(1, min(200, int(lim_raw)))
@@ -310,6 +328,9 @@ def register_observability_routes(bp: Blueprint, *, error_log: Any) -> None:
     @bp.route("/proxy-traces/clear", methods=["POST"])
     def post_proxy_traces_clear() -> Any:
         try:
+            denied = _require_remote_reveal_pin_for_logs()
+            if denied is not None:
+                return denied
             clear_proxy_trace_buffer()
             return jsonify({"ok": True})
         except Exception as e:
@@ -319,6 +340,9 @@ def register_observability_routes(bp: Blueprint, *, error_log: Any) -> None:
     @bp.route("/proxy-journal", methods=["GET"])
     def get_proxy_journal() -> Any:
         """Persisted proxy request rows only (session_id=proxy)."""
+        denied = _require_remote_reveal_pin_for_logs()
+        if denied is not None:
+            return denied
         try:
             lim_raw = request.args.get("limit", "50")
             limit = max(1, min(5000, int(lim_raw)))
@@ -366,6 +390,9 @@ def register_observability_routes(bp: Blueprint, *, error_log: Any) -> None:
     def delete_proxy_journal() -> Any:
         """Delete persisted proxy log rows (same scope as DELETE /proxy-logs without autocomplete filter)."""
         try:
+            denied = _require_remote_reveal_pin_for_logs()
+            if denied is not None:
+                return denied
             logs_repo = get_logs_repository()
             deleted = logs_repo.delete_proxy_logs(autocomplete_only=False)
             return jsonify({"ok": True, "deleted_count": deleted})
@@ -407,6 +434,9 @@ def register_observability_routes(bp: Blueprint, *, error_log: Any) -> None:
     def delete_logs() -> Any:
         """Delete log entries for a session from the database (matches GET scope by default)."""
         try:
+            denied = _require_remote_reveal_pin_for_logs()
+            if denied is not None:
+                return denied
             session_id = request.args.get("session_id")
             if not session_id:
                 return _error_response("session_id is required", 400)
@@ -424,6 +454,9 @@ def register_observability_routes(bp: Blueprint, *, error_log: Any) -> None:
     def delete_proxy_logs() -> Any:
         """Delete proxy (and optionally autocomplete-only) logs from the database."""
         try:
+            denied = _require_remote_reveal_pin_for_logs()
+            if denied is not None:
+                return denied
             ac_raw = (request.args.get("autocomplete_only") or "").strip().lower()
             autocomplete_only = ac_raw in ("1", "true", "yes")
 

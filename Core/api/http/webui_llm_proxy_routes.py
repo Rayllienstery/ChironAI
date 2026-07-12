@@ -18,6 +18,15 @@ from llm_proxy.api_key import (
     reveal_proxy_api_key,
     store_proxy_api_key_record,
 )
+from llm_proxy.reveal_pin import (
+    PinError,
+    change_pin,
+    disable_pin,
+    get_pin_status,
+    reset_lockout,
+    set_pin,
+    verify_pin_for_reveal,
+)
 
 from api.http.extensions_service_access import get_extensions_runtime, get_extensions_service
 from api.http.webui_provider_helpers import (
@@ -174,14 +183,21 @@ def register_llm_proxy_routes(
     def llm_proxy_reveal_api_key() -> Any:
         """Return the recoverable Chiron /v1 API key for WebUI admin reuse.
 
+        Loopback clients may reveal without a PIN.  LAN clients must supply the
+        configured reveal PIN (unless locked out).
+
         Returns:
             A JSON response containing the plaintext key and its metadata.
         """
         try:
-            denied = _require_loopback_for_api_key_management()
-            if denied is not None:
-                return denied
             settings_repo = _settings_repository()
+            if not is_loopback_client_request(request):
+                body = request.get_json(force=True, silent=True) or {}
+                pin = str(body.get("pin") or "").strip()
+                try:
+                    verify_pin_for_reveal(settings_repo, pin)
+                except PinError as e:
+                    return _error_response(e.message, 403, extra={"code": e.code})
             plaintext = reveal_proxy_api_key(settings_repo)
             if not plaintext:
                 return _error_response("Chiron proxy API key is not recoverable", 404)
@@ -206,6 +222,95 @@ def register_llm_proxy_routes(
             return jsonify(proxy_api_key_status(settings_repo))
         except Exception as e:
             error_log.error("webui_llm_proxy_routes.llm_proxy_delete_api_key", exc_info=True)
+            return _error_response(e)
+
+    @bp.route("/llm-proxy/reveal-pin", methods=["GET"])
+    def llm_proxy_reveal_pin_status() -> Any:
+        """Return reveal PIN metadata (configured / locked-out).
+
+        Returns:
+            A JSON response with ``configured`` and ``locked_out`` booleans.
+        """
+        try:
+            return jsonify(get_pin_status(_settings_repository()))
+        except Exception as e:
+            error_log.error("webui_llm_proxy_routes.llm_proxy_reveal_pin_status", exc_info=True)
+            return _error_response(e)
+
+    @bp.route("/llm-proxy/reveal-pin", methods=["POST"])
+    def llm_proxy_set_reveal_pin() -> Any:
+        """Install or change the reveal PIN (loopback only).
+
+        Body:
+            - Install: ``{"pin": "1234"}``
+            - Change:  ``{"current_pin": "1234", "new_pin": "5678"}``
+
+        Returns:
+            A JSON response with the updated PIN status.
+        """
+        try:
+            denied = _require_loopback_for_api_key_management()
+            if denied is not None:
+                return denied
+            body = request.get_json(force=True, silent=True) or {}
+            current_pin = str(body.get("current_pin") or "").strip()
+            new_pin = str(body.get("new_pin") or "").strip()
+            pin = str(body.get("pin") or "").strip()
+            settings_repo = _settings_repository()
+            if current_pin and new_pin:
+                change_pin(settings_repo, current_pin, new_pin)
+            elif pin:
+                set_pin(settings_repo, pin)
+            else:
+                return _error_response("Request must include pin or current_pin + new_pin", 400)
+            return jsonify(get_pin_status(settings_repo))
+        except PinError as e:
+            return _error_response(e.message, 400, extra={"code": e.code})
+        except Exception as e:
+            error_log.error("webui_llm_proxy_routes.llm_proxy_set_reveal_pin", exc_info=True)
+            return _error_response(e)
+
+    @bp.route("/llm-proxy/reveal-pin", methods=["DELETE"])
+    def llm_proxy_disable_reveal_pin() -> Any:
+        """Disable the reveal PIN (loopback only).
+
+        Body:
+            ``{"pin": "1234"}``
+
+        Returns:
+            A JSON response with the updated PIN status.
+        """
+        try:
+            denied = _require_loopback_for_api_key_management()
+            if denied is not None:
+                return denied
+            body = request.get_json(force=True, silent=True) or {}
+            pin = str(body.get("pin") or "").strip()
+            if not pin:
+                return _error_response("PIN is required", 400)
+            disable_pin(_settings_repository(), pin)
+            return jsonify(get_pin_status(_settings_repository()))
+        except PinError as e:
+            return _error_response(e.message, 400, extra={"code": e.code})
+        except Exception as e:
+            error_log.error("webui_llm_proxy_routes.llm_proxy_disable_reveal_pin", exc_info=True)
+            return _error_response(e)
+
+    @bp.route("/llm-proxy/reveal-pin/lockout", methods=["DELETE"])
+    def llm_proxy_reset_reveal_pin_lockout() -> Any:
+        """Reset the reveal PIN lockout counter (loopback only).
+
+        Returns:
+            A JSON response with the updated PIN status.
+        """
+        try:
+            denied = _require_loopback_for_api_key_management()
+            if denied is not None:
+                return denied
+            reset_lockout(_settings_repository())
+            return jsonify(get_pin_status(_settings_repository()))
+        except Exception as e:
+            error_log.error("webui_llm_proxy_routes.llm_proxy_reset_reveal_pin_lockout", exc_info=True)
             return _error_response(e)
 
     def _ollama_tag_name_set_for_builds_diag() -> set[str]:

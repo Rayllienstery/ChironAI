@@ -133,6 +133,7 @@ tests/*.tmp
 PROJECT_EVALUATION.md
 Pre-Release.md
 TECH_DEBT_TODO.md
+WebUI_LAN_AUTH.md
 .tmp_artifacts/
 *.db
 *.sqlite
@@ -178,3 +179,4 @@ prompts/*
 !prompts/.gitkeep
 .tmp_openwebui_data/
 docs/REPO_TRACKED_AUDIT.md
+.opencode

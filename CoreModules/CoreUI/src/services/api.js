@@ -8,6 +8,7 @@ import {
   extractApiError,
   fetchJsonWithTimeout,
 } from './http.js';
+import { withRemoteRevealPinInit } from './remoteRevealPin.js';
 
 export {
   getLlmProxyStatus,
@@ -15,6 +16,11 @@ export {
   generateLlmProxyApiKey,
   revealLlmProxyApiKey,
   deleteLlmProxyApiKey,
+  getRevealPinStatus,
+  setRevealPin,
+  changeRevealPin,
+  disableRevealPin,
+  resetRevealPinLockout,
   getLlmProxyBuilds,
   putLlmProxyBuilds,
   previewLlmProxyBuildModel,
@@ -281,14 +287,20 @@ export async function getLogs(sessionId, options = {}) {
     session_id: sessionId,
     ...options,
   });
-  const response = await fetch(`${API_BASE}/logs?${params}`, {
-    cache: 'no-store',
-    headers: { 'Cache-Control': 'no-cache' },
-  });
+  const response = await fetch(
+    `${API_BASE}/logs?${params}`,
+    withRemoteRevealPinInit({
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache' },
+    }),
+  );
+  const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error('Failed to get logs');
+    const err = new Error(extractApiError(data, 'Failed to get logs'));
+    err.code = data?.code || null;
+    throw err;
   }
-  return response.json();
+  return data;
 }
 
 export async function getDependencies() {
@@ -408,11 +420,14 @@ export async function clearLogs(sessionId, options = {}) {
   if (options.includeSystem === false) {
     params.set('include_system', '0');
   }
-  const response = await fetch(`${API_BASE}/logs?${params}`, {
-    method: 'DELETE',
-    cache: 'no-store',
-    headers: { 'Cache-Control': 'no-cache' },
-  });
+  const response = await fetch(
+    `${API_BASE}/logs?${params}`,
+    withRemoteRevealPinInit({
+      method: 'DELETE',
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache' },
+    }),
+  );
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
     throw new Error(extractApiError(err, 'Failed to clear logs'));

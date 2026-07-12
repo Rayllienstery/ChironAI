@@ -1179,3 +1179,82 @@ code.llm-proxy-build-summary-val {
   overflow-y: auto;
   max-height: 70vh;
 }
+
+/* Remote Access card on Tokens and Security */
+.remote-access-card {
+  margin-top: var(--md-sys-spacing-xl);
+}
+
+.remote-access-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--md-sys-spacing-sm);
+  margin-top: var(--md-sys-spacing-md);
+}
+
+.lockout-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--md-sys-spacing-sm);
+  margin-top: var(--md-sys-spacing-md);
+  padding: var(--md-sys-spacing-md);
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-on-error-container);
+}
+
+.lockout-alert .material-symbols-outlined {
+  flex-shrink: 0;
+  font-size: 1.25rem;
+}
+
+.lockout-alert p {
+  margin: 0;
+  font: var(--md-sys-typescale-body-small-font);
+  line-height: 1.5;
+}
+
+.lockout-alert code {
+  font-family: var(--coreui-font-family-mono);
+  font-size: 0.85rem;
+  background: rgba(0, 0, 0, 0.08);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+
+/* PIN modal */
+.pin-modal .coreui-modal {
+  width: min(420px, 100%);
+}
+
+.pin-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-sys-spacing-md);
+  padding: var(--md-sys-spacing-md) var(--md-sys-spacing-xl);
+}
+
+.pin-modal-body label {
+  font: var(--md-sys-typescale-label-large-font);
+  color: var(--md-sys-color-on-surface);
+}
+
+.pin-modal-body input {
+  padding: 12px 14px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface-container);
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-body-large-font);
+  letter-spacing: 0.15em;
+}
+
+.pin-modal-body input:focus {
+  outline: none;
+  border-color: var(--md-sys-color-primary);
+}
+
+.pin-error {
+  color: var(--md-sys-color-error);
+  font: var(--md-sys-typescale-body-small-font);
+}

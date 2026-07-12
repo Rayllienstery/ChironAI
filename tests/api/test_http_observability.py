@@ -9,6 +9,31 @@ import pytest
 from tests.api.http_fixtures import webui_blueprint_client as _webui_blueprint_client
 
 
+def _install_isolated_reveal_pin_repo(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
+    """Use an in-memory settings repo so PIN tests do not depend on local DB state."""
+    store: dict[str, str] = {}
+
+    class MemRepo:
+        def get_app_setting(self, key: str) -> str | None:
+            return store.get(key)
+
+        def set_app_setting(self, key: str, value: str) -> None:
+            store[key] = value
+
+        def delete_app_setting(self, key: str) -> None:
+            store.pop(key, None)
+
+    repo = MemRepo()
+    import api.http.rag_routes as rag_routes
+    import api.http.webui_observability_routes as obs_routes
+    import api.http.webui_routes as webui_routes
+    import infrastructure.database as db
+
+    for target in (db, obs_routes, rag_routes, webui_routes):
+        monkeypatch.setattr(target, "get_settings_repository", lambda repo=repo: repo)
+    return store
+
+
 def test_proxy_logs_passes_autocomplete_only_to_repository(monkeypatch: pytest.MonkeyPatch) -> None:
     """GET /api/webui/proxy-logs?autocomplete_only=1 filters autocomplete rows in the repository."""
     import api.http.webui_observability_routes as wr
@@ -281,4 +306,57 @@ def test_proxy_journal_since_id_skips_total_and_offset(monkeypatch: pytest.Monke
     assert last_kwargs.get("newest_first") is True
     assert "offset" not in last_kwargs or last_kwargs.get("offset", 0) == 0
     assert count_called is False
+
+
+@pytest.mark.fast
+@pytest.mark.api
+def test_webui_proxy_logs_lan_requires_reveal_pin(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_isolated_reveal_pin_repo(monkeypatch)
+    from api.http.rag_routes import create_app
+
+    client = create_app().test_client()
+    r = client.get(
+        "/api/webui/proxy-logs?limit=5",
+        environ_base={"REMOTE_ADDR": "10.0.0.8"},
+    )
+    assert r.status_code == 403
+    data = r.get_json() or {}
+    assert (data.get("code") or data.get("error", {}).get("code")) == "PIN_NOT_CONFIGURED"
+
+
+@pytest.mark.fast
+@pytest.mark.api
+def test_webui_proxy_logs_lan_accepts_reveal_pin_header(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_isolated_reveal_pin_repo(monkeypatch)
+    from api.http.rag_routes import create_app
+    from api.http.webui_trusted_client import REVEAL_PIN_HEADER
+
+    client = create_app().test_client()
+    r = client.post("/api/webui/llm-proxy/reveal-pin", json={"pin": "1234"})
+    assert r.status_code == 200
+
+    r = client.get(
+        "/api/webui/proxy-logs?limit=5",
+        headers={REVEAL_PIN_HEADER: "1234"},
+        environ_base={"REMOTE_ADDR": "10.0.0.8"},
+    )
+    assert r.status_code == 200
+    body = r.get_json() or {}
+    assert "logs" in body
+
+
+@pytest.mark.fast
+@pytest.mark.api
+def test_webui_logs_lan_requires_reveal_pin(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_isolated_reveal_pin_repo(monkeypatch)
+    from api.http.rag_routes import create_app
+
+    client = create_app().test_client()
+    r = client.get(
+        "/api/webui/logs?session_id=test-session&limit=5",
+        environ_base={"REMOTE_ADDR": "10.0.0.8"},
+    )
+    assert r.status_code == 403
+    data = r.get_json() or {}
+    assert (data.get("code") or data.get("error", {}).get("code")) == "PIN_NOT_CONFIGURED"
 

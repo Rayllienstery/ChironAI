@@ -6,6 +6,7 @@ import CoreUIButton from './CoreUIButton';
 import CoreUIPillTabs from './CoreUIPillTabs';
 import ProxyTracesTab from './ProxyTracesTab';
 import ProxyJournalTab from './ProxyJournalTab';
+import RemoteRevealPinGate from './RemoteRevealPinGate';
 import EmptyState from './EmptyState';
 import { useOptionalNotificationCenter } from './NotificationCenterContext';
 import { loadTrackedModule } from '../services/moduleTimings';
@@ -448,6 +449,7 @@ function LogsTab({ sessionId, focusSubTab, onFocusSubTabConsumed }) {
   };
 
   return (
+    <RemoteRevealPinGate>
     <div className={`logs-tab tab-view${viewMode === 'logs' ? ' logs-tab--fill-screen' : ''}`}>
       <div className="logs-header">
         <div className="logs-header-left">
@@ -579,6 +581,7 @@ function LogsTab({ sessionId, focusSubTab, onFocusSubTabConsumed }) {
       )}
 
     </div>
+    </RemoteRevealPinGate>
   );
 }
 

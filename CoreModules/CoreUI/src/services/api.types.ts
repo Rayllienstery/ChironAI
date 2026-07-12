@@ -1076,6 +1076,41 @@ export interface paths {
       };
     };
   };
+  "/api/webui/llm-proxy/reveal-pin": {
+    delete: {
+      parameters: never;
+      requestBody: components["schemas"]["GenericObject"];
+      responses: {
+        "200": components["schemas"]["GenericObject"];
+        "400": components["schemas"]["ErrorResponse"];
+      };
+    };
+    get: {
+      parameters: never;
+      requestBody: never;
+      responses: {
+        "200": components["schemas"]["GenericObject"];
+      };
+    };
+    post: {
+      parameters: never;
+      requestBody: components["schemas"]["GenericObject"];
+      responses: {
+        "200": components["schemas"]["GenericObject"];
+        "400": components["schemas"]["ErrorResponse"];
+      };
+    };
+  };
+  "/api/webui/llm-proxy/reveal-pin/lockout": {
+    delete: {
+      parameters: never;
+      requestBody: components["schemas"]["GenericObject"];
+      responses: {
+        "200": components["schemas"]["GenericObject"];
+        "400": components["schemas"]["ErrorResponse"];
+      };
+    };
+  };
   "/api/webui/llm-proxy/status": {
     get: {
       parameters: never;

@@ -132,6 +132,140 @@ def test_webui_delete_proxy_api_key_rejects_non_loopback_client() -> None:
 
 @pytest.mark.fast
 @pytest.mark.api
+def test_webui_reveal_pin_lan_requires_pin() -> None:
+    from api.http.rag_routes import create_app
+
+    client = create_app().test_client()
+    client.post("/api/webui/llm-proxy/api-key/generate")
+
+    r = client.post(
+        "/api/webui/llm-proxy/api-key/reveal",
+        environ_base={"REMOTE_ADDR": "10.0.0.8"},
+    )
+    assert r.status_code == 403
+    data = r.get_json() or {}
+    assert (data.get("code") or data.get("error", {}).get("code")) == "PIN_NOT_CONFIGURED"
+
+
+@pytest.mark.fast
+@pytest.mark.api
+def test_webui_reveal_pin_lan_with_pin() -> None:
+    from api.http.rag_routes import create_app
+
+    client = create_app().test_client()
+    client.post("/api/webui/llm-proxy/api-key/generate")
+    client.post("/api/webui/llm-proxy/reveal-pin", json={"pin": "1234"})
+
+    r = client.post(
+        "/api/webui/llm-proxy/api-key/reveal",
+        json={"pin": "1234"},
+        environ_base={"REMOTE_ADDR": "10.0.0.8"},
+    )
+    assert r.status_code == 200
+    data = r.get_json() or {}
+    assert data.get("key")
+
+
+@pytest.mark.fast
+@pytest.mark.api
+def test_webui_reveal_pin_lockout_after_three_wrong_attempts() -> None:
+    from api.http.rag_routes import create_app
+
+    client = create_app().test_client()
+    client.post("/api/webui/llm-proxy/api-key/generate")
+    client.post("/api/webui/llm-proxy/reveal-pin", json={"pin": "1234"})
+
+    for _ in range(2):
+        r = client.post(
+            "/api/webui/llm-proxy/api-key/reveal",
+            json={"pin": "0000"},
+            environ_base={"REMOTE_ADDR": "10.0.0.8"},
+        )
+        assert r.status_code == 403
+        data = r.get_json() or {}
+        assert (data.get("code") or data.get("error", {}).get("code")) == "PIN_INVALID"
+
+    r = client.post(
+        "/api/webui/llm-proxy/api-key/reveal",
+        json={"pin": "0000"},
+        environ_base={"REMOTE_ADDR": "10.0.0.8"},
+    )
+    assert r.status_code == 403
+    data = r.get_json() or {}
+    assert (data.get("code") or data.get("error", {}).get("code")) == "PIN_LOCKED_OUT"
+
+    # Correct PIN is rejected while locked out
+    r = client.post(
+        "/api/webui/llm-proxy/api-key/reveal",
+        json={"pin": "1234"},
+        environ_base={"REMOTE_ADDR": "10.0.0.8"},
+    )
+    assert r.status_code == 403
+    data = r.get_json() or {}
+    assert (data.get("code") or data.get("error", {}).get("code")) == "PIN_LOCKED_OUT"
+
+
+@pytest.mark.fast
+@pytest.mark.api
+def test_webui_reveal_pin_loopback_can_install_change_disable_and_reset_lockout() -> None:
+    from api.http.rag_routes import create_app
+
+    client = create_app().test_client()
+    client.post("/api/webui/llm-proxy/api-key/generate")
+
+    status = client.get("/api/webui/llm-proxy/reveal-pin").get_json() or {}
+    assert status.get("configured") is False
+
+    r = client.post("/api/webui/llm-proxy/reveal-pin", json={"pin": "1234"})
+    assert r.status_code == 200
+    status = r.get_json() or {}
+    assert status.get("configured") is True
+    assert status.get("locked_out") is False
+
+    r = client.post(
+        "/api/webui/llm-proxy/reveal-pin",
+        json={"current_pin": "1234", "new_pin": "5678"},
+    )
+    assert r.status_code == 200
+
+    r = client.post(
+        "/api/webui/llm-proxy/api-key/reveal",
+        json={"pin": "5678"},
+        environ_base={"REMOTE_ADDR": "10.0.0.8"},
+    )
+    assert r.status_code == 200
+    assert (r.get_json() or {}).get("key")
+
+    r = client.delete("/api/webui/llm-proxy/reveal-pin", json={"pin": "5678"})
+    assert r.status_code == 200
+    status = r.get_json() or {}
+    assert status.get("configured") is False
+
+
+@pytest.mark.fast
+@pytest.mark.api
+def test_webui_reveal_pin_mutations_reject_non_loopback_client() -> None:
+    from api.http.rag_routes import create_app
+
+    client = create_app().test_client()
+    client.post("/api/webui/llm-proxy/api-key/generate")
+
+    r = client.post(
+        "/api/webui/llm-proxy/reveal-pin",
+        json={"pin": "1234"},
+        environ_base={"REMOTE_ADDR": "10.0.0.8"},
+    )
+    assert r.status_code == 403
+
+    r = client.delete(
+        "/api/webui/llm-proxy/reveal-pin/lockout",
+        environ_base={"REMOTE_ADDR": "10.0.0.8"},
+    )
+    assert r.status_code == 403
+
+
+@pytest.mark.fast
+@pytest.mark.api
 def test_webui_reveal_proxy_api_key_returns_404_for_hash_only_legacy_key() -> None:
     from api.http.rag_routes import create_app
 

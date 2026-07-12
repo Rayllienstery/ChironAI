@@ -76,7 +76,7 @@ The hexagonal **`rag_service`** package ships with **`chironai_rag`** in **`Core
    - Manual: `npm run build` in `CoreModules/CoreUI`, then run `start_webui.bat` (Windows) or start the Flask app from the repo root.
 6. Open `http://127.0.0.1:8080/webui` (or the URL printed by the startup script).
 
-> **Security note:** ChironAI binds to `127.0.0.1` by default (`server.yaml` / `SERVER_HOST`). The WebUI has no built-in authentication — any client that can reach the bind address has full management access. Do not expose the WebUI to the public internet; use a trusted network or an authenticating reverse proxy for remote access. See `SECURITY.md` and [ADR 0008](docs/adr/0008-webui-auth-model.md).
+> **Security note:** ChironAI binds to `127.0.0.1` by default (`server.yaml` / `SERVER_HOST`). The WebUI has no built-in login — any client that can reach the bind address has full management access. Exceptions from LAN: revealing the proxy API key and reading/clearing logs/traces require a 4-8 digit reveal PIN (configured in **Tokens and Security → Remote Access**) and lock out after 3 failed attempts. Do not expose the WebUI to the public internet; use a trusted network or an authenticating reverse proxy for remote access. See `SECURITY.md` and [ADR 0008](docs/adr/0008-webui-auth-model.md).
 
 ## Platform support
 

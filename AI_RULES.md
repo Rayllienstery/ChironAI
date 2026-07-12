@@ -316,6 +316,7 @@ Risk and “tail” summary: `docs/legacy_map.md`.
 - [ ] If the change touches broad `except Exception:` blocks: are they narrowed to specific exceptions with tests for the error path?
 - [ ] If the change affects CoreUI: does `npm run bundle:budget` still pass, and do `npm run test:run` / `npm run test:coverage` pass?
 - [ ] If the change adds or exposes a sensitive WebUI route: is it protected when the server binds to non-loopback addresses?
+- [ ] If the change is dual-client (loopback + LAN/remote): did you verify **both** user-story paths and avoid loopback UI stubs? (§10.4)
 - [ ] If the task closes a tech-debt item: is `TECH_DEBT_TODO.md` updated (status, notes, new items discovered)?
 
 ---
@@ -344,6 +345,36 @@ Risk and “tail” summary: `docs/legacy_map.md`.
 - **P1** — breaks tooling or erodes trust in gates. Fix in the same sprint.
 - **P2** — slows development but has a workaround. Schedule explicitly.
 - **P3** — polish. Pick up opportunistically.
+
+### 10.4 Dual-client UI and security features (loopback + remote)
+
+Applies when a spec describes **two clients** (e.g. admin on `127.0.0.1`, consumer on LAN) or when routes use `webui_trusted_client` / loopback guards.
+
+1. **Read the user story first.** List numbered steps for **each** client before coding. If the spec says "install on localhost, use from Mac", localhost is not optional.
+2. **`loopback-only` mutations ≠ skip reads on loopback.** If `GET` returns public metadata (status, configured flags), the loopback UI must call it like any other client. Do not hardcode `{ configured: false }` or similar stubs in `refresh*` helpers unless the maintainer explicitly approved it in the task.
+3. **No self-rationalized shortcuts.** Do not mark a task done because "remote path works" while localhost admin UI is broken or stuck in one state.
+4. **Tests must match the state machine.** A smoke test that only asserts a heading rendered is **not** acceptance for new cards, modals, or button visibility that depends on API status. Add at least one behavioral unit test per distinct UI state (e.g. PIN not configured → Install; PIN configured → Change + Disable).
+5. **End-of-task report must include:**
+
+   ```text
+   User story verified: yes / no
+   Steps: (copy from spec; mark pass/fail each)
+   ```
+
+   If any step fails, status is **not done** — use `[!]` in `TECH_DEBT_TODO.md`, not `[x]`.
+
+6. **Maintainer decision records** (e.g. `WebUI_LAN_AUTH.md`, `.gitignore`): read before implementing security UX; do not expand scope (full LAN auth, DB encryption) unless the maintainer reopens it.
+
+**Anti-pattern (reject in review):**
+
+```javascript
+if (isLoopback) {
+  setPinStatus({ configured: false, locked_out: false });
+  return;
+}
+```
+
+When the backend exposes `GET …/status` and localhost is where admins install/configure the feature.
 
 ---
 
