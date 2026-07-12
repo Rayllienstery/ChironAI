@@ -4,7 +4,7 @@ Short gate before tagging a release. Run from repo root unless noted.
 
 ## Release candidate 0.10.0 notes
 
-Status: **PRE-RELEASE** — `v0.10.0` closes the v0.10.0 tech-debt milestone (`2026-07-13`). `v0.8.63` remains the last **STABLE** tag.
+Status: **released (PRE-RELEASE)** — tag `v0.10.0` (`2026-07-13`). `v0.8.63` remains the last **STABLE** tag.
 
 Highlights (0.10.0):
 
@@ -22,6 +22,8 @@ Verification snapshot (2026-07-13):
 - CoreUI unit tests: PASS (208 tests).
 - `lint-imports`: PASS.
 - `python scripts/gen_api_docs.py --check` — PASS (regenerated for 0.10.0).
+- Tag `v0.10.0` CI `release` green ([run 29195834137](https://github.com/Rayllienstery/ChironAI/actions/runs/29195834137)).
+- GitHub Release published as **prerelease**: [v0.10.0 PRE-RELEASE](https://github.com/Rayllienstery/ChironAI/releases/tag/v0.10.0).
 
 ### Known release gate gaps (advisory, non-blocking)
 
