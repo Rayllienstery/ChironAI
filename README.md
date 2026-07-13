@@ -7,7 +7,7 @@
 
 ChironAI lets you run a local/private RAG system over your own documentation, inspect how retrieval works, and extend the runtime through isolated provider modules.
 
-> **Version lines:** Active development is on **0.9.x PRE-RELEASE** (`APP_STAGE = PRE-RELEASE`). For production or conservative local use, stay on **`v0.8.63` STABLE** (last STABLE tag before the 0.9 line).
+> **Version lines:** Active development is on **0.10.x Pre-Release Stable** (`APP_STAGE = PRE-RELEASE`; current tag **`v0.10.2`**). For production or conservative local use, stay on **`v0.8.63` STABLE** (last STABLE tag before the 0.9+ pre-release line).
 
 It is aimed at developers who want a debuggable RAG platform rather than a black-box chatbot.
 
