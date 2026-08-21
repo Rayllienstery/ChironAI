@@ -2,9 +2,24 @@
 
 Short gate before tagging a release. Run from repo root unless noted.
 
+## Release candidate 0.10.4 notes
+
+Status: **released (Pre-Release Stable)** — tag `v0.10.4` (2026-08-21). Current **Latest** on GitHub for the active line; `v0.8.63` remains the last **STABLE** tag.
+
+Highlights (0.10.4):
+
+- **Ollama tab payload:** stop registry `check_image_update` on every UI poll (root cause of `get_tab_payload` timeouts → worker block).
+- **Sandbox soft timeouts:** UI/diagnostic RPCs no longer auto-restart/block the worker; `check_image_update` host timeout 5s; serialize worker `host_call`.
+
+Verification snapshot (2026-08-21):
+
+- `pytest -q tests/extensions_sandbox/test_worker_protocol.py tests/extensions/test_ollama_provider.py` — PASS (23 tests).
+- `python scripts/check_version_drift.py` — passed (0.10.4).
+- GitHub Release: [v0.10.4](https://github.com/Rayllienstery/ChironAI/releases/tag/v0.10.4).
+
 ## Release candidate 0.10.3 notes
 
-Status: **released (Pre-Release Stable)** — tag `v0.10.3` (2026-08-21). Current **Latest** on GitHub for the active line; `v0.8.63` remains the last **STABLE** tag.
+Status: **released (Pre-Release Stable)** — tag `v0.10.3` (2026-08-21). Superseded as Latest by `v0.10.4`; `v0.8.63` remains the last **STABLE** tag.
 
 Highlights (0.10.3):
 

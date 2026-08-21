@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+import threading
 import traceback
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
@@ -23,6 +24,7 @@ _PROTOCOL_OUT = sys.stdout
 sys.stdout = sys.stderr
 _next_host_id = 0
 _provider: Any = None
+_host_call_lock = threading.RLock()
 
 
 def _send(payload: dict[str, Any]) -> None:
@@ -42,16 +44,18 @@ def _read_message() -> dict[str, Any]:
 
 def _host_call(target: str, method: str, *args: Any, **kwargs: Any) -> Any:
     global _next_host_id
-    _next_host_id += 1
-    call_id = _next_host_id
-    _send({"type": "host_call", "id": call_id, "target": target, "method": method, "args": args, "kwargs": kwargs})
-    while True:
-        msg = _read_message()
-        if msg.get("type") != "host_response" or int(msg.get("id") or -1) != call_id:
-            continue
-        if msg.get("ok"):
-            return msg.get("result")
-        raise RuntimeError(str(msg.get("error") or "host call failed"))
+    # Serialize host RPC: stdin is shared and ThreadPool probes must not race reads.
+    with _host_call_lock:
+        _next_host_id += 1
+        call_id = _next_host_id
+        _send({"type": "host_call", "id": call_id, "target": target, "method": method, "args": args, "kwargs": kwargs})
+        while True:
+            msg = _read_message()
+            if msg.get("type") != "host_response" or int(msg.get("id") or -1) != call_id:
+                continue
+            if msg.get("ok"):
+                return msg.get("result")
+            raise RuntimeError(str(msg.get("error") or "host call failed"))
 
 
 _EXT_SETTINGS_PREFIX = "ext."

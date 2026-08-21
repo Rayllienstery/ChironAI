@@ -43,6 +43,7 @@ class _Docker:
         self.image = ""
         self.ensure_spec: Any | None = None
         self.stopped = ""
+        self.image_check_calls: list[str] = []
         self.image_check: dict[str, Any] = {
             "status": "up_to_date",
             "message": "Image is up to date",
@@ -73,6 +74,7 @@ class _Docker:
         return {"ok": True, "container": name, "message": "stopped"}
 
     def check_image_update(self, image: str) -> dict[str, Any]:
+        self.image_check_calls.append(image)
         return dict(self.image_check)
 
 
@@ -132,6 +134,26 @@ def test_ollama_tab_payload_includes_docker_card_component(monkeypatch: Any) -> 
     assert card["backendUrlLabel"] == "Chat backend URL"
     assert card["fieldKey"] == "backend_url"
     assert card["autosaveActionId"] == "save_backend"
+    # Tab polling must not hit the registry — that hangs sandbox host_calls.
+    assert docker.image_check_calls == []
+
+
+def test_ollama_tab_payload_skips_registry_image_check(monkeypatch: Any) -> None:
+    module = _load_ollama_provider_module()
+    monkeypatch.setattr(module, "invoke_ping", lambda **_: {"ok": True})
+    monkeypatch.setattr(module, "invoke_tags", lambda **_: {"models": []})
+
+    docker = _Docker()
+    docker.exists = True
+    docker.running = True
+    provider = _provider(docker, module=module)
+
+    provider.get_tab_payload()
+    assert docker.image_check_calls == []
+
+    result = provider.run_action("check_image_version", {})
+    assert result["ok"] is True
+    assert docker.image_check_calls
 
 
 def test_ollama_docker_card_has_expected_meta_tiles(monkeypatch: Any) -> None:

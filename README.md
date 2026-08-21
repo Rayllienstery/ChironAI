@@ -16,7 +16,7 @@
   <a href="https://codecov.io/gh/Rayllienstery/ChironAI"><img src="https://codecov.io/gh/Rayllienstery/ChironAI/branch/master/graph/badge.svg" alt="codecov" /></a>
 </p>
 
-> **Version lines:** Active development is on **0.10.x Pre-Release Stable** (`APP_STAGE = PRE-RELEASE`; current tag **`v0.10.3`**). For production or conservative local use, stay on **`v0.8.63` STABLE** (last STABLE tag before the 0.9+ pre-release line).
+> **Version lines:** Active development is on **0.10.x Pre-Release Stable** (`APP_STAGE = PRE-RELEASE`; current tag **`v0.10.4`**). For production or conservative local use, stay on **`v0.8.63` STABLE** (last STABLE tag before the 0.9+ pre-release line).
 
 ## Screenshots
 

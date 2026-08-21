@@ -1,6 +1,12 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.10.4] - 2026-08-21
+
+### Fixed
+- Ollama tab polling no longer runs Docker registry `check_image_update` on every `get_tab_payload` (that hung sandbox host calls and blocked the worker).
+- Soft UI RPC timeouts (`get_tab_payload`, descriptor, health, describe, list_models) no longer auto-restart or permanently block the extension worker; `check_image_update` host calls are bounded to 5s; worker host_calls are serialized.
+
 ## [0.10.3] - 2026-08-21
 
 ### Fixed

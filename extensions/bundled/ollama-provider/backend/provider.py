@@ -965,10 +965,10 @@ class OllamaProvider:
         }
 
     def _finalize_docker_state(self, docker: Any | None, state: dict[str, Any]) -> dict[str, Any]:
-        image = str(state.get("image") or "").strip()
-        if docker is None or not image:
-            return state
-        return {**state, **self._docker_version_fields(docker, image)}
+        # Do not call check_image_update here — registry lookups can hang for tens of seconds
+        # and block the sandbox host_call path during UI tab polling. Image version is
+        # checked on demand via the `check_image_version` action (_run_image_version_check).
+        return state
 
     def _inspect_docker_container(self, docker: Any, container_name: str) -> tuple[bool | None, bool | None]:
         inspect = getattr(docker, "inspect_container", None)

@@ -31,10 +31,23 @@ class ExtensionWorkerTimeout(TimeoutError):
 
 _HOST_CALL_TIMEOUTS: dict[tuple[str, str], float] = {
     ("docker_runtime", "inspect_container"): 1.5,
+    ("docker_runtime", "check_image_update"): 5.0,
 }
 
 # Keep a bounded stderr ring so PIPE does not fill and deadlock the worker.
 _STDERR_RING_MAX_CHARS = 16_384
+
+# UI/diagnostic RPCs must not restart or block the worker on timeout — that would
+# take down chat/stream after a flaky Docker/registry probe from the Extensions tab.
+_SOFT_TIMEOUT_METHODS = frozenset(
+    {
+        "describe",
+        "list_models",
+        "health_check",
+        "get_tab_descriptor",
+        "get_tab_payload",
+    }
+)
 
 _log = logging.getLogger("chironai.extensions")
 
@@ -339,6 +352,8 @@ class ExtensionWorkerClient:
         if self._closed or self._blocked or self._manual_stopped:
             return False
         if self.status not in {"crashed", "timeout", "protocol_error"}:
+            return False
+        if self.status == "timeout" and method in _SOFT_TIMEOUT_METHODS:
             return False
         self._consecutive_failures += 1
         if self._consecutive_failures > self.MAX_AUTO_RESTARTS:

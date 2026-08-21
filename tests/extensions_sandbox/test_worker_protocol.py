@@ -168,6 +168,10 @@ class Provider:
     def health_check(self):
         return ProviderHealth(provider_id="sandbox-diag", ok=True, status="ok")
 
+    def get_tab_payload(self):
+        time.sleep(2)
+        return {"ok": True}
+
     def run_action(self, action_id, payload):
         if action_id == "pid":
             return {"ok": True, "pid": os.getpid()}
@@ -362,6 +366,29 @@ def test_worker_client_exposes_pid_and_manual_restart_kill(tmp_path: Path) -> No
         assert client.status == "ready"
         assert client.manual_restart_required is False
         assert client.restart_count == 2
+    finally:
+        client.close()
+
+
+def test_worker_client_soft_ui_timeout_does_not_block(tmp_path: Path) -> None:
+    ext = _write_extension(tmp_path, provider_py=DIAGNOSTIC_PROVIDER)
+    manifest = load_manifest_from_dir(ext)
+    assert manifest.backend is not None
+    client = ExtensionWorkerClient(
+        source_dir=ext,
+        entrypoint=manifest.backend.entrypoint,
+        manifest=manifest,
+        project_root=Path(__file__).resolve().parents[2],
+        host_context=_host(tmp_path),
+    )
+    try:
+        for _ in range(3):
+            with pytest.raises(ExtensionWorkerTimeout):
+                client.call("get_tab_payload", timeout_sec=0.1)
+        assert client.blocked is False
+        assert client.restart_count == 0
+        assert client.manual_restart_required is False
+        assert client.call("run_action", {"action_id": "pid", "payload": {}})["ok"] is True
     finally:
         client.close()
 
