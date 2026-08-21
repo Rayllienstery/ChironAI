@@ -12,6 +12,7 @@ import sys
 import threading
 import time
 import weakref
+from collections import deque
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from types import SimpleNamespace
@@ -31,6 +32,9 @@ class ExtensionWorkerTimeout(TimeoutError):
 _HOST_CALL_TIMEOUTS: dict[tuple[str, str], float] = {
     ("docker_runtime", "inspect_container"): 1.5,
 }
+
+# Keep a bounded stderr ring so PIPE does not fill and deadlock the worker.
+_STDERR_RING_MAX_CHARS = 16_384
 
 _log = logging.getLogger("chironai.extensions")
 
@@ -79,6 +83,10 @@ class ExtensionWorkerClient:
         self._proc: subprocess.Popen[str] | None = None
         self._finalizer: weakref.finalize[Any] | None = None
         self._reader: threading.Thread | None = None
+        self._stderr_reader: threading.Thread | None = None
+        self._stderr_chunks: deque[str] = deque()
+        self._stderr_chars = 0
+        self._stderr_lock = threading.Lock()
         self._start_worker(increment_restart_count=False)
         self._initialize_worker()
         self.status = "ready"
@@ -104,6 +112,9 @@ class ExtensionWorkerClient:
 
     def _start_worker(self, *, increment_restart_count: bool) -> None:
         self._lines = queue.Queue()
+        with self._stderr_lock:
+            self._stderr_chunks.clear()
+            self._stderr_chars = 0
         self._proc = self._start_process()
         if increment_restart_count:
             self.restart_count += 1
@@ -115,6 +126,13 @@ class ExtensionWorkerClient:
             daemon=True,
         )
         self._reader.start()
+        self._stderr_reader = threading.Thread(
+            target=self._read_stderr,
+            args=(self._proc,),
+            name=f"extension-worker-stderr-{self.source_dir.name}",
+            daemon=True,
+        )
+        self._stderr_reader.start()
 
     def _initialize_worker(self) -> None:
         self._raw_call(
@@ -170,6 +188,24 @@ class ExtensionWorkerClient:
                 lines.put(line)
         finally:
             lines.put(None)
+
+    def _read_stderr(self, proc: subprocess.Popen[str] | None) -> None:
+        if proc is None or proc.stderr is None:
+            return
+        try:
+            for line in proc.stderr:
+                self._append_stderr(line)
+        except Exception:
+            # Best-effort drain; process exit closes the pipe.
+            return
+
+    def _append_stderr(self, line: str) -> None:
+        with self._stderr_lock:
+            self._stderr_chunks.append(line)
+            self._stderr_chars += len(line)
+            while self._stderr_chars > _STDERR_RING_MAX_CHARS and self._stderr_chunks:
+                dropped = self._stderr_chunks.popleft()
+                self._stderr_chars -= len(dropped)
 
     def _manifest_dict(self, manifest: Any) -> dict[str, Any]:
         if is_dataclass(manifest):
@@ -247,10 +283,19 @@ class ExtensionWorkerClient:
             (error or self.error or "-")[:200],
         )
 
+    def _blocked_error_message(self) -> str:
+        last = (self.error or "").strip()
+        marker = "blocked until manual restart"
+        if last and marker in last.lower():
+            return last
+        if last:
+            return f"extension worker is blocked until manual restart (last error: {last})"
+        return "extension worker is blocked until manual restart"
+
     def call(self, method: str, params: dict[str, Any] | None = None, *, timeout_sec: float | None = None) -> Any:
         with self._lock:
             if self._blocked:
-                raise ExtensionWorkerError(self.error or "extension worker is blocked until manual restart")
+                raise ExtensionWorkerError(self._blocked_error_message())
             if self._manual_stopped:
                 raise ExtensionWorkerError("extension worker is stopped until manual restart")
             attempt = 0
@@ -299,8 +344,7 @@ class ExtensionWorkerClient:
         if self._consecutive_failures > self.MAX_AUTO_RESTARTS:
             self._blocked = True
             self.status = "blocked"
-            if not self.error:
-                self.error = "extension worker failed repeatedly and is blocked until manual restart"
+            self.error = self._blocked_error_message()
             self._log_worker_blocked(method=method, error=self.error)
             return False
         return True
@@ -537,14 +581,18 @@ class ExtensionWorkerClient:
             self._finalizer.detach()
             self._finalizer = None
         self._proc = None
+        reader = self._reader
+        stderr_reader = self._stderr_reader
+        self._reader = None
+        self._stderr_reader = None
+        for thread in (reader, stderr_reader):
+            if thread is not None and thread.is_alive():
+                thread.join(timeout=1.0)
 
     def _stderr_tail(self) -> str:
-        if self._proc is None or self._proc.stderr is None:
-            return ""
-        try:
-            return self._proc.stderr.read()[-1000:]
-        except Exception:
-            return ""
+        with self._stderr_lock:
+            text = "".join(self._stderr_chunks)
+        return text[-1000:] if text else ""
 
 
 def namespace_from_dict(value: Any) -> Any:

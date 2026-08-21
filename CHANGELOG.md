@@ -1,6 +1,11 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.10.3] - 2026-08-21
+
+### Fixed
+- Extension sandbox no longer deadlocks when workers write heavily to stderr (drains stderr into a bounded ring buffer); blocked workers now report a clear "manual restart" error instead of replaying the last timeout text.
+
 ## [0.10.2] - 2026-07-12
 
 ### Added

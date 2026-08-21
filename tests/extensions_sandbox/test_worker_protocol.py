@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from llm_interactor.discovery import discover_extensions, load_manifest_from_dir
 
-from extensions_sandbox import ExtensionWorkerClient, ExtensionWorkerTimeout
+from extensions_sandbox import ExtensionWorkerClient, ExtensionWorkerError, ExtensionWorkerTimeout
 from llm_interactor import LLMRequest, ProviderHostContext
 
 
@@ -176,6 +176,11 @@ class Provider:
             return {"ok": True}
         if action_id == "crash":
             os._exit(7)
+        if action_id == "stderr_flood":
+            chunk = "x" * 1024
+            for _ in range(300):
+                print(chunk, flush=True)
+            return {"ok": True, "flooded": True}
         return {"ok": True, "action_id": action_id}
 
 def create_provider(host_context, manifest):
@@ -379,11 +384,37 @@ def test_worker_client_auto_restarts_then_blocks_crash_loop(tmp_path: Path) -> N
         assert client.blocked is True
         assert client.status == "blocked"
         assert client.manual_restart_required is True
+        assert "blocked until manual restart" in client.last_error
+
+        with pytest.raises(ExtensionWorkerError, match="blocked until manual restart"):
+            client.call("run_action", {"action_id": "pid", "payload": {}}, timeout_sec=1.0)
 
         client.restart()
         assert client.blocked is False
         assert client.status == "ready"
         assert client.call("run_action", {"action_id": "pid", "payload": {}})["ok"] is True
+    finally:
+        client.close()
+
+
+def test_worker_client_drains_stderr_during_long_output(tmp_path: Path) -> None:
+    ext = _write_extension(tmp_path, provider_py=DIAGNOSTIC_PROVIDER)
+    manifest = load_manifest_from_dir(ext)
+    assert manifest.backend is not None
+    client = ExtensionWorkerClient(
+        source_dir=ext,
+        entrypoint=manifest.backend.entrypoint,
+        manifest=manifest,
+        project_root=Path(__file__).resolve().parents[2],
+        host_context=_host(tmp_path),
+    )
+    try:
+        result = client.call("run_action", {"action_id": "stderr_flood", "payload": {}}, timeout_sec=30.0)
+        assert result["ok"] is True
+        assert result["flooded"] is True
+        # Ring buffer keeps a tail of drained stderr without deadlocking the worker.
+        time.sleep(0.2)
+        assert len(client._stderr_tail()) > 0
     finally:
         client.close()
 

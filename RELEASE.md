@@ -2,9 +2,25 @@
 
 Short gate before tagging a release. Run from repo root unless noted.
 
+## Release candidate 0.10.3 notes
+
+Status: **released (Pre-Release Stable)** — tag `v0.10.3` (2026-08-21). Current **Latest** on GitHub for the active line; `v0.8.63` remains the last **STABLE** tag.
+
+Highlights (0.10.3):
+
+- **Extension sandbox stderr drain:** host drains worker stderr into a bounded ring buffer so Windows PIPE fill no longer hangs `ollama-provider` / agent streams.
+- **Blocked worker errors:** after repeated timeout/crash failures, calls raise an explicit "blocked until manual restart" message (with last error), not a stale timeout string alone.
+
+Verification snapshot (2026-08-21):
+
+- `pytest -q tests/extensions_sandbox/test_worker_protocol.py` — PASS (9 tests).
+- `python scripts/check_version_drift.py` — passed (0.10.3).
+- `ruff check` / `py_compile` on edited ExtensionsSandbox client — PASS.
+- GitHub Release published as **Pre-Release Stable** (Latest): [v0.10.3](https://github.com/Rayllienstery/ChironAI/releases/tag/v0.10.3).
+
 ## Release candidate 0.10.2 notes
 
-Status: **released (Pre-Release Stable)** — tag `v0.10.2` (2026-07-12). Current **Latest** on GitHub for the active line; `v0.8.63` remains the last **STABLE** tag.
+Status: **released (Pre-Release Stable)** — tag `v0.10.2` (2026-07-12). Superseded as Latest by `v0.10.3`; `v0.8.63` remains the last **STABLE** tag.
 
 Highlights (0.10.1–0.10.2):
 
