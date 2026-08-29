@@ -13,7 +13,8 @@ from llm_proxy.chat_completions_handler_helpers import (
 )
 
 
-def test_build_forced_think_value_respects_body_override() -> None:
+def test_build_forced_think_value_never_forces_from_build() -> None:
+    """Builds advertise thinking only; clients own the effort level."""
     assert (
         build_forced_think_value(
             body={"think": False},
@@ -22,16 +23,13 @@ def test_build_forced_think_value_respects_body_override() -> None:
         )
         is None
     )
-
-
-def test_build_forced_think_value_non_gpt_oss_maps_chat_think_bool() -> None:
     assert (
         build_forced_think_value(
             body={},
-            active_build={"chat_think": True},
-            model_name="llama3",
+            active_build={"chat_think": True, "reasoning_level": "high"},
+            model_name="glm-5.3:cloud",
         )
-        is True
+        is None
     )
     assert (
         build_forced_think_value(
@@ -39,26 +37,15 @@ def test_build_forced_think_value_non_gpt_oss_maps_chat_think_bool() -> None:
             active_build={"chat_think": False},
             model_name="llama3",
         )
-        is False
-    )
-
-
-def test_build_forced_think_value_gpt_oss_uses_reasoning_level() -> None:
-    assert (
-        build_forced_think_value(
-            body={"reasoning_level": "high"},
-            active_build={"chat_think": True},
-            model_name="gpt-oss-20b",
-        )
-        == "high"
+        is None
     )
     assert (
         build_forced_think_value(
-            body={},
+            body={"reasoning_effort": "high"},
             active_build={"chat_think": True},
             model_name="gpt-oss-20b",
         )
-        == "medium"
+        is None
     )
 
 

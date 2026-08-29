@@ -177,8 +177,6 @@ def _call(method: str, params: dict[str, Any]) -> Any:
         return {"provider_id": getattr(desc, "id", ""), "ok": True, "status": "unknown"}
     if method == "invoke":
         return _provider.invoke(_request_from_dict(dict(params.get("request") or {})))
-    if method == "stream_invoke":
-        return list(_provider.stream_invoke(_request_from_dict(dict(params.get("request") or {}))))
     if method == "get_tab_descriptor":
         fn = getattr(_provider, "get_tab_descriptor", None)
         return fn() if callable(fn) else {}
@@ -208,8 +206,19 @@ def main() -> None:
         if msg.get("type") != "request":
             continue
         req_id = int(msg.get("id") or 0)
+        method = str(msg.get("method") or "")
+        params = dict(msg.get("params") or {})
         try:
-            result = _call(str(msg.get("method") or ""), dict(msg.get("params") or {}))
+            if method == "stream_invoke":
+                if _provider is None:
+                    raise RuntimeError("provider is not initialized")
+                for event in _provider.stream_invoke(
+                    _request_from_dict(dict(params.get("request") or {}))
+                ):
+                    _send({"type": "stream_event", "id": req_id, "event": event})
+                _send({"type": "response", "id": req_id, "ok": True, "result": None})
+                continue
+            result = _call(method, params)
             _send({"type": "response", "id": req_id, "ok": True, "result": result})
         except SystemExit:
             _send({"type": "response", "id": req_id, "ok": True, "result": None})

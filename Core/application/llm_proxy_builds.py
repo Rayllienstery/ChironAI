@@ -148,7 +148,8 @@ def normalize_build(build: dict[str, Any]) -> tuple[dict[str, Any] | None, list[
         "web_interaction_wikipedia": bool(build.get("web_interaction_wikipedia", False)),
         "code_only": bool(build.get("code_only", False)),
         "include_rag_metadata": bool(build.get("include_rag_metadata", True)),
-        "reasoning_level": str(build.get("reasoning_level") or "").strip(),
+        # Reasoning *level* is client-owned (OWUI / Hermes). Builds only keep
+        # chat_think as a capability advertisement for /v1/models.
         "chat_think": bool(build.get("chat_think", False)),
         "ide_mode": bool(build.get("ide_mode", False)),
         "private": bool(build.get("private", False)),
@@ -288,6 +289,23 @@ def openai_model_objects_for_builds(builds: list[dict[str, Any]]) -> list[dict[s
         if context_length is not None:
             row["context_length"] = context_length
             row["num_ctx"] = context_length
+        # Advertise thinking so OWUI/Hermes/OpenAI clients can offer a
+        # reasoning_effort control. The level itself is chosen per request.
+        if bool(b.get("chat_think")):
+            caps = list(row.get("capabilities") or [])
+            if "thinking" not in caps:
+                caps.append("thinking")
+            row["capabilities"] = caps
+            row["reasoning"] = True
+            row["supports_reasoning"] = True
+            row["supported_parameters"] = [
+                "temperature",
+                "top_p",
+                "max_tokens",
+                "tools",
+                "reasoning_effort",
+            ]
+            metadata = {**metadata, "supports_reasoning": True, "chat_think": True}
         row["metadata"] = metadata
         rows.append(row)
     return rows

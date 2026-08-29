@@ -2,9 +2,29 @@
 
 Short gate before tagging a release. Run from repo root unless noted.
 
+## Release candidate 0.10.12 notes
+
+Status: **released (Pre-Release Stable)** — tag `v0.10.12` (2026-08-29). Current **Latest** on GitHub for the active line; `v0.8.63` remains the last **STABLE** tag.
+
+Highlights (0.10.5–0.10.12):
+
+- **Live RAG Fusion Proxy card:** streamed token count, last-200-char preview in a fixed 5-line slot, and `URL fetch: n` when the turn used `web_search` / `web_extract`.
+- **Streaming:** sandbox `stream_invoke` is incremental; `/v1/chat/completions` SSE closes after `[DONE]`.
+- **Reasoning:** OpenAI `reasoning_effort` / `reasoning` / `reasoning_level` map to Ollama `think` levels instead of a boolean.
+- **Builds:** Extreme prefab uses the real 256K window (`num_ctx` 262144).
+
+Verification snapshot (2026-08-29):
+
+- `python scripts/check_version_drift.py` — passed (0.10.12).
+- Targeted pytest — 50 passed (`test_http_observability`, `test_worker_protocol`, `test_llm_proxy_builds`, `test_chat_completions_handler_helpers`).
+- `ruff check` on edited Python — passed.
+- CoreUI `npm run build` — passed.
+- Local backend smoke: `python -m webui_backend.rag_proxy` reached `Server ready` on port 8080 (Qdrant on 6333 still down, unrelated).
+- GitHub Release: [v0.10.12](https://github.com/Rayllienstery/ChironAI/releases/tag/v0.10.12).
+
 ## Release candidate 0.10.4 notes
 
-Status: **released (Pre-Release Stable)** — tag `v0.10.4` (2026-08-21). Current **Latest** on GitHub for the active line; `v0.8.63` remains the last **STABLE** tag.
+Status: **released (Pre-Release Stable)** — tag `v0.10.4` (2026-08-21). Superseded as Latest by `v0.10.12`; `v0.8.63` remains the last **STABLE** tag.
 
 Highlights (0.10.4):
 

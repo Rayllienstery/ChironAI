@@ -109,6 +109,19 @@ def test_openai_model_objects_expose_opencode_vision_capabilities() -> None:
     assert rows[0]["supportsTools"] is True
     assert rows[0]["supports_tools"] is True
     assert rows[0]["tool_call"] is True
+    assert "supports_reasoning" not in rows[0]
+    assert "thinking" not in rows[0]["capabilities"]
+
+
+def test_openai_model_objects_advertise_thinking_when_chat_think() -> None:
+    rows = openai_model_objects_for_builds([{**_base_build(), "chat_think": True}])
+
+    assert rows[0]["reasoning"] is True
+    assert rows[0]["supports_reasoning"] is True
+    assert "thinking" in rows[0]["capabilities"]
+    assert "reasoning_effort" in rows[0]["supported_parameters"]
+    assert rows[0]["metadata"]["supports_reasoning"] is True
+    assert rows[0]["metadata"]["chat_think"] is True
 
 
 def test_openai_client_capability_fields_returns_independent_payload() -> None:

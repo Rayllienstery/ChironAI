@@ -20,12 +20,15 @@ _updated_at: str | None = None
 _trace_buffer: deque[dict[str, Any]] = deque(maxlen=80)
 _active_traces: dict[str, dict[str, Any]] = {}
 _active_trace_updated: dict[str, datetime] = {}
+_live_completion_tokens: dict[str, int] = {}
+_live_visible_previews: dict[str, tuple[str, bool]] = {}
 _response_artifacts: dict[str, dict[str, Any]] = {}
 _response_artifacts_updated: dict[str, datetime] = {}
 
 _ACTIVE_TRACE_TTL = timedelta(seconds=45)
 _COMPLETE_TRACE_GRACE = timedelta(seconds=2)
 _RESPONSE_ARTIFACTS_TTL = timedelta(seconds=45)
+_LIVE_VISIBLE_TAIL_CHARS = 200
 
 
 def _trace_key(trace: dict[str, Any]) -> str:
@@ -44,17 +47,23 @@ def _trace_complete(trace: dict[str, Any]) -> bool:
     return resp.get("latency_ms") is not None
 
 
+def _drop_active_trace(key: str) -> None:
+    _active_traces.pop(key, None)
+    _active_trace_updated.pop(key, None)
+    _live_completion_tokens.pop(key, None)
+    _live_visible_previews.pop(key, None)
+
+
 def _prune_active_traces(now: datetime) -> None:
     for key in list(_active_traces.keys()):
         updated = _active_trace_updated.get(key)
         if updated is None:
-            _active_traces.pop(key, None)
+            _drop_active_trace(key)
             continue
         trace = _active_traces.get(key) or {}
         age = now - updated
         if age > _ACTIVE_TRACE_TTL or (_trace_complete(trace) and age > _COMPLETE_TRACE_GRACE):
-            _active_traces.pop(key, None)
-            _active_trace_updated.pop(key, None)
+            _drop_active_trace(key)
 
 
 def _prune_response_artifacts(now: datetime) -> None:
@@ -65,6 +74,161 @@ def _prune_response_artifacts(now: datetime) -> None:
             _response_artifacts_updated.pop(key, None)
 
 
+def _patch_live_completion_tokens(tr: dict[str, Any], completion_tokens: int) -> None:
+    ollama = tr.get("ollama")
+    if not isinstance(ollama, dict):
+        ollama = {}
+        tr["ollama"] = ollama
+    estimates = ollama.get("tokens_estimates")
+    if not isinstance(estimates, dict):
+        estimates = {}
+        ollama["tokens_estimates"] = estimates
+    ollama["chat_stream"] = True
+    out = max(0, int(completion_tokens))
+    estimates["completion_tokens_estimated"] = out
+    prompt_raw = estimates.get("prompt_tokens_estimated")
+    try:
+        prompt_n = int(prompt_raw) if prompt_raw is not None else None
+    except (TypeError, ValueError):
+        prompt_n = None
+    if prompt_n is not None:
+        estimates["total_tokens_estimated"] = prompt_n + out
+
+
+def _strip_live_preview_fields(tr: dict[str, Any]) -> None:
+    for name in ("ollama", "provider"):
+        bucket = tr.get(name)
+        if isinstance(bucket, dict):
+            bucket.pop("live_visible_tail", None)
+            bucket.pop("live_visible_tail_truncated", None)
+
+
+def _patch_live_visible_tail(tr: dict[str, Any], tail: str, truncated: bool) -> None:
+    ollama = tr.get("ollama")
+    if not isinstance(ollama, dict):
+        ollama = {}
+        tr["ollama"] = ollama
+    ollama["live_visible_tail"] = str(tail or "")
+    ollama["live_visible_tail_truncated"] = bool(truncated)
+
+
+def _merge_live_visible_tail(tr: dict[str, Any] | None) -> None:
+    if not isinstance(tr, dict):
+        return
+    preview = _live_visible_previews.get(_trace_key(tr))
+    if preview is None:
+        return
+    _patch_live_visible_tail(tr, preview[0], preview[1])
+
+
+def _normalize_visible_tail(visible_tail: str) -> tuple[str, bool]:
+    raw = str(visible_tail or "")
+    if len(raw) <= _LIVE_VISIBLE_TAIL_CHARS:
+        return raw, False
+    return raw[-_LIVE_VISIBLE_TAIL_CHARS:], True
+
+
+def _estimated_completion_tokens(tr: dict[str, Any]) -> int | None:
+    provider = tr.get("ollama") if isinstance(tr.get("ollama"), dict) else tr.get("provider")
+    if not isinstance(provider, dict):
+        return None
+    estimates = provider.get("tokens_estimates")
+    if not isinstance(estimates, dict):
+        return None
+    raw = estimates.get("completion_tokens_estimated")
+    try:
+        n = int(raw) if raw is not None else None
+    except (TypeError, ValueError):
+        return None
+    return n if n is not None and n >= 0 else None
+
+
+def _merge_live_progress(tr: dict[str, Any] | None) -> None:
+    if not isinstance(tr, dict):
+        return
+    key = _trace_key(tr)
+    live_n = _live_completion_tokens.get(key)
+    if live_n is None:
+        return
+    existing = _estimated_completion_tokens(tr)
+    tokens = live_n if existing is None else max(live_n, existing)
+    _live_completion_tokens[key] = tokens
+    _patch_live_completion_tokens(tr, tokens)
+
+
+def update_live_stream_progress(
+    *,
+    trace_id: str | None = None,
+    completion_tokens: int = 0,
+    visible_tail: str | None = None,
+    visible_tail_truncated: bool | None = None,
+) -> None:
+    """Patch live token counts and a short visible tail without growing the ring buffer.
+
+    SSE generators call this ~5Hz so CoreUI can show tokens already sent without
+    snapshotting every delta into Traces history.
+    """
+    global _updated_at
+    tokens = max(0, int(completion_tokens))
+    with _lock:
+        now = datetime.now(timezone.utc)
+        _updated_at = now.isoformat()
+        tid = str(trace_id or "").strip()
+        if tid:
+            prev = _live_completion_tokens.get(tid, 0)
+            _live_completion_tokens[tid] = max(prev, tokens)
+            tokens = _live_completion_tokens[tid]
+            if visible_tail is not None:
+                tail, sliced = _normalize_visible_tail(visible_tail)
+                truncated = bool(visible_tail_truncated) or sliced
+                _live_visible_previews[tid] = (tail, truncated)
+        if _current_trace is not None and (not tid or _trace_key(_current_trace) == tid):
+            _patch_live_completion_tokens(_current_trace, tokens)
+            _merge_live_visible_tail(_current_trace)
+        if tid:
+            active = _active_traces.get(tid)
+            if isinstance(active, dict):
+                _patch_live_completion_tokens(active, tokens)
+                _merge_live_visible_tail(active)
+                _active_trace_updated[tid] = now
+        _prune_active_traces(now)
+
+
+def _patch_live_url_fetch_count(tr: dict[str, Any], url_fetch_count: int) -> None:
+    n = max(0, int(url_fetch_count))
+    if n <= 0:
+        return
+    request = tr.get("request")
+    if not isinstance(request, dict):
+        request = {}
+        tr["request"] = request
+    request["url_fetch_count"] = n
+    internet = tr.get("internet")
+    if not isinstance(internet, dict):
+        internet = {}
+        tr["internet"] = internet
+    internet["url_fetch_count"] = n
+
+
+def update_live_url_fetch_count(
+    *,
+    trace_id: str | None = None,
+    url_fetch_count: int = 0,
+) -> None:
+    """Patch URL-fetch count onto the live card without a new ring-buffer snapshot."""
+    n = max(0, int(url_fetch_count))
+    if n <= 0:
+        return
+    with _lock:
+        tid = str(trace_id or "").strip()
+        if _current_trace is not None and (not tid or _trace_key(_current_trace) == tid):
+            _patch_live_url_fetch_count(_current_trace, n)
+        if tid:
+            active = _active_traces.get(tid)
+            if isinstance(active, dict):
+                _patch_live_url_fetch_count(active, n)
+
+
 def set_current_trace(trace: dict[str, Any] | None) -> None:
     """Set latest trace (thread-safe). Non-None snapshots are copied into the ring buffer."""
     global _current_trace, _updated_at
@@ -73,10 +237,14 @@ def set_current_trace(trace: dict[str, Any] | None) -> None:
         _current_trace = trace
         _updated_at = now.isoformat()
         if trace is not None:
-            trace_copy = copy.deepcopy(trace)
-            _trace_buffer.append(trace_copy)
-            _active_traces[_trace_key(trace_copy)] = trace_copy
-            _active_trace_updated[_trace_key(trace_copy)] = now
+            _merge_live_progress(trace)
+            ring_copy = copy.deepcopy(trace)
+            _strip_live_preview_fields(ring_copy)
+            _trace_buffer.append(ring_copy)
+            active_copy = copy.deepcopy(trace)
+            _merge_live_visible_tail(active_copy)
+            _active_traces[_trace_key(active_copy)] = active_copy
+            _active_trace_updated[_trace_key(active_copy)] = now
         _prune_active_traces(now)
         _prune_response_artifacts(now)
 
@@ -84,6 +252,8 @@ def set_current_trace(trace: dict[str, Any] | None) -> None:
 def get_current_trace() -> dict[str, Any] | None:
     """Get latest trace (thread-safe)."""
     with _lock:
+        _merge_live_progress(_current_trace)
+        _merge_live_visible_tail(_current_trace)
         return _current_trace
 
 
@@ -100,7 +270,13 @@ def get_active_traces() -> list[dict[str, Any]]:
             _active_traces.items(),
             key=lambda item: _active_trace_updated.get(item[0], datetime.min.replace(tzinfo=timezone.utc)),
         )
-        return [copy.deepcopy(trace) for _, trace in rows]
+        out: list[dict[str, Any]] = []
+        for _, trace in rows:
+            copied = copy.deepcopy(trace)
+            _merge_live_progress(copied)
+            _merge_live_visible_tail(copied)
+            out.append(copied)
+        return out
 
 
 def set_response_artifacts(
@@ -162,6 +338,8 @@ def recent_proxy_traces(limit: int = 40) -> list[dict[str, Any]]:
 def clear_proxy_trace_buffer() -> None:
     with _lock:
         _trace_buffer.clear()
+        _live_completion_tokens.clear()
+        _live_visible_previews.clear()
         _response_artifacts.clear()
         _response_artifacts_updated.clear()
 

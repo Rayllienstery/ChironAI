@@ -566,6 +566,40 @@
   margin-top: 2px;
 }
 
+.proxy-live-notification-token-chip {
+  cursor: default;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.proxy-live-notification-stream-preview {
+  box-sizing: border-box;
+  position: relative;
+  flex: 0 0 65px;
+  width: 100%;
+  margin-top: 6px;
+  padding: 0;
+  font-size: 10px;
+  line-height: 13px;
+  height: 65px;
+  min-height: 65px;
+  max-height: 65px;
+  overflow: hidden;
+  color: var(--md-sys-color-outline);
+}
+
+.proxy-live-notification-stream-preview > span {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 65px;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
 .notification-proxy-winddown {
   display: flex;
   flex-direction: column;

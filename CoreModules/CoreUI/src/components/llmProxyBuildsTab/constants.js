@@ -38,8 +38,8 @@ export const PARAMETER_PREFABS = [
     id: 'extreme',
     label: 'Extreme',
     icon: 'warning',
-    values: { num_ctx: 202752, num_predict: 32768, max_agent_steps: 128 },
-    description: '200K context for full-codebase sessions. 128 steps supports long-horizon work (migrations, multi-module rewrites). Beyond this, use durable project memory files instead.',
+    values: { num_ctx: 262144, num_predict: 32768, max_agent_steps: 128 },
+    description: '256K context for full-codebase sessions (Kimi K2.7 Code and similar). 128 steps supports long-horizon work (migrations, multi-module rewrites). Beyond this, use durable project memory files instead.',
   },
 ];
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
@@ -63,6 +64,63 @@ PersistLogFn = Callable[..., None]
 OllamaOptionsOverlayFn = Callable[[], dict[str, Any]]
 LogRagErrorPrivateFn = Callable[..., None]
 RagCompletedPayloadFn = Callable[..., dict[str, Any]]
+
+
+def _spawn_stream_finalize(fn: Callable[[], None]) -> None:
+    """Close the SSE body first; journal/debug work must not hold the HTTP stream open."""
+    threading.Thread(target=fn, name="llm-proxy-stream-finalize", daemon=True).start()
+
+
+_LIVE_STREAM_TOKEN_INTERVAL_SEC = 0.2
+
+
+class _LiveStreamTokenReporter:
+    """Throttle live completion-token patches so CoreUI can poll at 5 Hz."""
+
+    def __init__(self, w: Any, trace: dict[str, Any], *, enabled: bool) -> None:
+        self._fn = getattr(w, "update_live_stream_progress", None) if enabled else None
+        self._trace_id = str((trace or {}).get("trace_id") or "")
+        self._last_mono = 0.0
+        self._last_tokens = -1
+        self._last_tail = None
+
+    def _publish(self, visible_text: str) -> None:
+        if not callable(self._fn):
+            return
+        text = visible_text or ""
+        tokens = approx_token_count(text) if text else 0
+        tail = text[-200:] if text else ""
+        truncated = len(text) > 200
+        if tokens == self._last_tokens and tail == self._last_tail:
+            return
+        self._last_tokens = tokens
+        self._last_tail = tail
+        try:
+            self._fn(
+                trace_id=self._trace_id,
+                completion_tokens=tokens,
+                visible_tail=tail,
+                visible_tail_truncated=truncated,
+            )
+        except Exception:
+            _RAG_LOG.debug("live stream token progress update failed", exc_info=True)
+
+    def observe(self, visible_text: str) -> None:
+        if not callable(self._fn):
+            return
+        now = time.monotonic()
+        if self._last_mono and (now - self._last_mono) < _LIVE_STREAM_TOKEN_INTERVAL_SEC:
+            return
+        self._last_mono = now
+        self._publish(visible_text)
+
+    def flush(self, visible_text: str) -> None:
+        if not callable(self._fn):
+            return
+        self._last_mono = 0.0
+        self._last_tokens = -1
+        self._last_tail = None
+        self._publish(visible_text)
 
 
 @dataclass(frozen=True)
@@ -221,6 +279,8 @@ def iter_native_tools_sse_stream(ctx: NativeToolsStreamContext) -> Iterator[str]
     total_tokens_holder = [0]
 
     yield sse_role_assistant_chunk(oid, ctx.client_visible_model)
+    live_tokens = _LiveStreamTokenReporter(ctx.w, ctx.trace, enabled=not ctx.private_build)
+    live_tokens.flush("")
 
     def _on_reasoning_guard() -> None:
         _append_trace_warning(ctx.trace, "reasoning_only_guard_triggered")
@@ -251,6 +311,7 @@ def iter_native_tools_sse_stream(ctx: NativeToolsStreamContext) -> Iterator[str]
             on_reasoning_guard=_on_reasoning_guard,
             upstream_model=ctx.use_model,
             trace=ctx.trace,
+            on_visible_progress=live_tokens.observe,
         )
     except Exception as exc:
         if not ctx.private_build:
@@ -260,6 +321,7 @@ def iter_native_tools_sse_stream(ctx: NativeToolsStreamContext) -> Iterator[str]
         stream_acc.visible_parts.append(err_text)
         stream_acc.final_parts.append(err_text)
         yield sse_content_chunk(oid, ctx.client_visible_model, err_text)
+    live_tokens.flush(stream_acc.visible_content)
 
     full_content = stream_acc.visible_content
     reasoning_content = stream_acc.reasoning_content
@@ -358,39 +420,42 @@ def iter_native_tools_sse_stream(ctx: NativeToolsStreamContext) -> Iterator[str]
     ctx.publish_trace(ctx.trace)
 
     if not ctx.private_build:
-        ctx.persist_proxy_request_log(
-            message=f"Proxy request (native tools stream): {ctx.user_query[:100]}...",
-            response_preview=full_content,
-            latency_ms_value=stream_latency_ms,
-            trace_payload=ctx.trace,
-            stream_value=True,
-            include_rag_fields=True,
-            include_token_fields=True,
-            prompt_tokens_value=prompt_tokens,
-            completion_tokens_value=completion_tokens,
-            total_tokens_value=total_tokens_holder[0],
-            ollama_chat_stream=True,
-            warn_label="native-tools stream",
-        )
-        _RAG_LOG.debug(
-            json.dumps(
-                ctx.rag_request_completed_payload(
-                    user_query=ctx.user_query,
-                    trace_id=ctx.trace_id,
-                    use_model=ctx.use_model,
-                    requested_model=ctx.requested_model,
-                    latency_ms=stream_latency_ms,
-                    prompt_tokens=prompt_tokens,
-                    completion_tokens=completion_tokens,
-                    rag_context_for_obs=ctx.rag_ctx_for_log,
-                    rag_timings=ctx.rag_timings,
-                    trace=ctx.trace,
-                    stream=True,
-                    is_autocomplete=bool(ctx.is_autocomplete),
-                    native_tools=True,
+        def _finalize_native_journal() -> None:
+            ctx.persist_proxy_request_log(
+                message=f"Proxy request (native tools stream): {ctx.user_query[:100]}...",
+                response_preview=full_content,
+                latency_ms_value=stream_latency_ms,
+                trace_payload=ctx.trace,
+                stream_value=True,
+                include_rag_fields=True,
+                include_token_fields=True,
+                prompt_tokens_value=prompt_tokens,
+                completion_tokens_value=completion_tokens,
+                total_tokens_value=total_tokens_holder[0],
+                ollama_chat_stream=True,
+                warn_label="native-tools stream",
+            )
+            _RAG_LOG.debug(
+                json.dumps(
+                    ctx.rag_request_completed_payload(
+                        user_query=ctx.user_query,
+                        trace_id=ctx.trace_id,
+                        use_model=ctx.use_model,
+                        requested_model=ctx.requested_model,
+                        latency_ms=stream_latency_ms,
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        rag_context_for_obs=ctx.rag_ctx_for_log,
+                        rag_timings=ctx.rag_timings,
+                        trace=ctx.trace,
+                        stream=True,
+                        is_autocomplete=bool(ctx.is_autocomplete),
+                        native_tools=True,
+                    )
                 )
             )
-        )
+
+        _spawn_stream_finalize(_finalize_native_journal)
 
     ctx.w.set_proxy_status(ctx.w.status_idle)
     ctx.w.set_latest_request_seconds(time.time() - ctx.start_time)
@@ -475,6 +540,8 @@ def iter_standard_sse_stream(ctx: StandardStreamContext) -> Iterator[str]:
     total_tokens_holder = [0]
 
     yield sse_role_assistant_chunk(oid, ctx.client_visible_model)
+    live_tokens = _LiveStreamTokenReporter(ctx.w, ctx.trace, enabled=not ctx.private_build)
+    live_tokens.flush("")
 
     def _on_reasoning_guard() -> None:
         _append_trace_warning(ctx.trace, "reasoning_only_guard_triggered")
@@ -503,6 +570,7 @@ def iter_standard_sse_stream(ctx: StandardStreamContext) -> Iterator[str]:
             on_reasoning_guard=_on_reasoning_guard,
             upstream_model=ctx.use_model,
             trace=ctx.trace,
+            on_visible_progress=live_tokens.observe,
         )
     except Exception as exc:
         if not ctx.private_build:
@@ -512,6 +580,7 @@ def iter_standard_sse_stream(ctx: StandardStreamContext) -> Iterator[str]:
         stream_acc.visible_parts.append(err_text)
         stream_acc.final_parts.append(err_text)
         yield sse_content_chunk(oid, ctx.client_visible_model, err_text)
+    live_tokens.flush(stream_acc.visible_content)
 
     full_response = stream_acc.visible_content
     reasoning_content = stream_acc.reasoning_content
@@ -578,46 +647,48 @@ def iter_standard_sse_stream(ctx: StandardStreamContext) -> Iterator[str]:
     ctx.publish_trace(ctx.trace)
 
     if not ctx.private_build:
-        ctx.persist_proxy_request_log(
-            message=f"Proxy request (stream): {ctx.user_query[:100]}...",
-            response_preview=full_response,
-            latency_ms_value=stream_latency_ms,
-            trace_payload=ctx.trace,
-            stream_value=True,
-            include_rag_fields=True,
-            include_token_fields=True,
-            prompt_tokens_value=prompt_tokens_approx,
-            completion_tokens_value=completion_tokens_approx,
-            total_tokens_value=total_tokens_approx,
-            ollama_chat_stream=True,
-            warn_label="stream",
-        )
-
-        _RAG_LOG.debug(
-            json.dumps(
-                ctx.rag_request_completed_payload(
-                    user_query=ctx.user_query,
-                    trace_id=ctx.trace_id,
-                    use_model=ctx.use_model,
-                    requested_model=ctx.requested_model,
-                    latency_ms=stream_latency_ms,
-                    prompt_tokens=prompt_tokens_approx,
-                    completion_tokens=completion_tokens_approx,
-                    rag_context_for_obs=ctx.rag_ctx_for_log,
-                    rag_timings=ctx.rag_timings,
-                    trace=ctx.trace,
-                    stream=True,
-                    is_autocomplete=bool(ctx.is_autocomplete),
-                    native_tools=False,
+        def _finalize_standard_journal() -> None:
+            ctx.persist_proxy_request_log(
+                message=f"Proxy request (stream): {ctx.user_query[:100]}...",
+                response_preview=full_response,
+                latency_ms_value=stream_latency_ms,
+                trace_payload=ctx.trace,
+                stream_value=True,
+                include_rag_fields=True,
+                include_token_fields=True,
+                prompt_tokens_value=prompt_tokens_approx,
+                completion_tokens_value=completion_tokens_approx,
+                total_tokens_value=total_tokens_approx,
+                ollama_chat_stream=True,
+                warn_label="stream",
+            )
+            _RAG_LOG.debug(
+                json.dumps(
+                    ctx.rag_request_completed_payload(
+                        user_query=ctx.user_query,
+                        trace_id=ctx.trace_id,
+                        use_model=ctx.use_model,
+                        requested_model=ctx.requested_model,
+                        latency_ms=stream_latency_ms,
+                        prompt_tokens=prompt_tokens_approx,
+                        completion_tokens=completion_tokens_approx,
+                        rag_context_for_obs=ctx.rag_ctx_for_log,
+                        rag_timings=ctx.rag_timings,
+                        trace=ctx.trace,
+                        stream=True,
+                        is_autocomplete=bool(ctx.is_autocomplete),
+                        native_tools=False,
+                    )
                 )
             )
-        )
-        _RAG_LOG.debug(
-            "RAG response (stream) model=%s len=%s preview=%s",
-            ctx.use_model,
-            len(full_response),
-            full_response[: ctx.log_preview] if full_response else "",
-        )
+            _RAG_LOG.debug(
+                "RAG response (stream) model=%s len=%s preview=%s",
+                ctx.use_model,
+                len(full_response),
+                full_response[: ctx.log_preview] if full_response else "",
+            )
+
+        _spawn_stream_finalize(_finalize_standard_journal)
 
     ctx.w.set_proxy_status(ctx.w.status_idle)
     ctx.w.set_latest_request_seconds(time.time() - ctx.start_time)

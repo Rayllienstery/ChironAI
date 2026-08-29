@@ -262,6 +262,41 @@ def test_sandboxed_extension_provider_round_trips_runtime_calls(tmp_path: Path) 
     provider.close()
 
 
+def test_sandboxed_stream_invoke_forwards_events_before_worker_finishes(tmp_path: Path) -> None:
+    provider_py = PROVIDER.replace(
+        "    def stream_invoke(self, request):\n"
+        "        yield LLMStreamEvent(provider_id=\"sandbox\", model=request.model, type=\"content_delta\", data=\"a\")\n"
+        "        yield LLMStreamEvent(provider_id=\"sandbox\", model=request.model, type=\"done\", data={})\n",
+        "    def stream_invoke(self, request):\n"
+        "        import time\n"
+        "        yield LLMStreamEvent(provider_id=\"sandbox\", model=request.model, type=\"content_delta\", data=\"a\")\n"
+        "        time.sleep(0.4)\n"
+        "        yield LLMStreamEvent(provider_id=\"sandbox\", model=request.model, type=\"content_delta\", data=\"b\")\n"
+        "        yield LLMStreamEvent(provider_id=\"sandbox\", model=request.model, type=\"done\", data={})\n",
+    )
+    ext = _write_extension(tmp_path, provider_py=provider_py)
+    report = discover_extensions([ext], host_context=_host(tmp_path))
+    assert report.failed == []
+    provider = report.loaded[0].provider
+    try:
+        started = time.monotonic()
+        it = provider.stream_invoke(LLMRequest(model="tiny"))
+        first = next(it)
+        first_at = time.monotonic() - started
+        second = next(it)
+        second_at = time.monotonic() - started
+        rest = list(it)
+        assert first.type == "content_delta"
+        assert first.data == "a"
+        assert first_at < 0.25
+        assert second.type == "content_delta"
+        assert second.data == "b"
+        assert second_at >= 0.3
+        assert rest[-1].type == "done"
+    finally:
+        provider.close()
+
+
 def test_sandboxed_extension_can_check_docker_image_updates(tmp_path: Path) -> None:
     docker = _Docker()
     ext = _write_extension(tmp_path, provider_py=DOCKER_PROVIDER)

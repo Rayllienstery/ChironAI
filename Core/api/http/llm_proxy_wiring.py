@@ -43,7 +43,7 @@ from api.http.proxy_status import (
     set_latest_request_total_tokens,
     set_proxy_status,
 )
-from api.http.proxy_trace import set_current_trace
+from api.http.proxy_trace import set_current_trace, update_live_stream_progress
 
 try:
     from external_docs_rag.application.use_cases import (
@@ -458,6 +458,7 @@ def build_llm_proxy_wiring(
         set_latest_request_total_tokens=set_latest_request_total_tokens,
         set_latest_request_rag_steps=set_latest_request_rag_steps,
         set_current_trace=set_current_trace,
+        update_live_stream_progress=update_live_stream_progress,
         status_idle=STATUS_IDLE,
         status_rag_search=STATUS_RAG_SEARCH,
         status_preparing_response=STATUS_PREPARING_RESPONSE,

@@ -64,6 +64,7 @@ class LlmProxyWiring:
     set_latest_request_total_tokens: Callable[[int | None], None]
     set_latest_request_rag_steps: Callable[[dict[str, float] | None], None]
     set_current_trace: Callable[[dict[str, Any]], None]
+    update_live_stream_progress: Callable[..., None]
 
     status_idle: str
     status_rag_search: str

@@ -178,7 +178,16 @@ def run_chat_rag_pipeline(
         "total_rag_s": 0.0,
     }
     background_refresh_started = False
+    prior_url_fetch = 0
+    prior_internet = trace.get("internet")
+    if isinstance(prior_internet, dict):
+        try:
+            prior_url_fetch = int(prior_internet.get("url_fetch_count") or 0)
+        except (TypeError, ValueError):
+            prior_url_fetch = 0
     trace["internet"] = {"background_refresh_started": False}
+    if prior_url_fetch > 0:
+        trace["internet"]["url_fetch_count"] = prior_url_fetch
     rag_context_data: dict[str, Any] | None = None
 
     try:

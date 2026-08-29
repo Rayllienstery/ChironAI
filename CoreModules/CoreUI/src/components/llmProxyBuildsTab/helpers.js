@@ -62,7 +62,6 @@ export function emptyDraft() {
     web_interaction_wikipedia: false,
     code_only: false,
     include_rag_metadata: true,
-    reasoning_level: '',
     chat_think: false,
     sse_streaming: true,
     private: false,
@@ -120,7 +119,6 @@ export function draftToPayload(draft) {
   o.ide_mode = draft.use_prompt_template === false;
   o.sse_streaming = draft.sse_streaming !== false;
   o.private = Boolean(draft.private);
-  o.reasoning_level = String(draft.reasoning_level || '').trim();
   o.rag_collection = String(draft.rag_collection || '').trim();
   [
     'temperature',

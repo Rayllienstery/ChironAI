@@ -109,8 +109,13 @@ class SandboxedExtensionProvider:
         return _response(self._client.call("invoke", {"request": request}, timeout_sec=900.0))
 
     def stream_invoke(self, request: LLMRequest) -> Iterator[LLMStreamEvent]:
-        for item in self._client.call("stream_invoke", {"request": request}, timeout_sec=900.0):
-            yield _event(item)
+        for item in self._client.iter_call(
+            "stream_invoke",
+            {"request": request},
+            timeout_sec=900.0,
+        ):
+            if isinstance(item, dict):
+                yield _event(item)
 
     def get_tab_descriptor(self, *, runtime: Any | None = None) -> dict[str, Any]:
         return dict(self._client.call("get_tab_descriptor", timeout_sec=5.0) or {})

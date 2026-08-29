@@ -6,6 +6,7 @@ import CoreUIButton from './CoreUIButton';
 import { useNotificationCenter } from './NotificationCenterContext';
 
 const POLL_MS = 1000;
+const STREAM_POLL_MS = 200;
 const WIND_DOWN_MS = 7_000;
 
 const LEGACY_LLM_LIVE_ID = 'llm-proxy-live';
@@ -62,6 +63,104 @@ function groupActiveTraces(traces) {
 function numOrNull(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+function traceIsSseStream(trace) {
+  const req = trace && typeof trace === 'object' && trace.request && typeof trace.request === 'object'
+    ? trace.request
+    : null;
+  if (Boolean(req?.stream) || Boolean(req?.ollama_chat_stream)) return true;
+  const provider = trace && typeof trace === 'object' && (trace.provider || trace.ollama)
+    && typeof (trace.provider || trace.ollama) === 'object'
+    ? (trace.provider || trace.ollama)
+    : null;
+  return Boolean(provider?.chat_stream);
+}
+
+function liveStreamCompletionTokens(trace) {
+  if (!traceIsSseStream(trace)) return null;
+  const provider = trace && typeof trace === 'object' && (trace.provider || trace.ollama)
+    && typeof (trace.provider || trace.ollama) === 'object'
+    ? (trace.provider || trace.ollama)
+    : {};
+  const estimates = provider.tokens_estimates && typeof provider.tokens_estimates === 'object'
+    ? provider.tokens_estimates
+    : {};
+  const n = numOrNull(estimates.completion_tokens_estimated);
+  return n != null && n >= 0 ? Math.floor(n) : 0;
+}
+
+function payloadHasSseStream(proxyPayload) {
+  if (payloadActiveTraces(proxyPayload).some(traceIsSseStream)) return true;
+  return Boolean(proxyPayload?.trace) && traceIsSseStream(proxyPayload.trace);
+}
+
+function liveUrlFetchCount(trace) {
+  const request = trace && typeof trace === 'object' && trace.request && typeof trace.request === 'object'
+    ? trace.request
+    : {};
+  const internet = trace && typeof trace === 'object' && trace.internet && typeof trace.internet === 'object'
+    ? trace.internet
+    : {};
+  const n = numOrNull(request.url_fetch_count) ?? numOrNull(internet.url_fetch_count);
+  return n != null && n > 0 ? Math.floor(n) : null;
+}
+
+function liveStreamPreview(trace) {
+  const provider = trace && typeof trace === 'object' && (trace.provider || trace.ollama)
+    && typeof (trace.provider || trace.ollama) === 'object'
+    ? (trace.provider || trace.ollama)
+    : {};
+  const raw = nonEmptyString(provider.live_visible_tail);
+  if (!raw) return null;
+  return {
+    text: raw.slice(-200),
+    truncated: Boolean(provider.live_visible_tail_truncated) || raw.length > 200,
+  };
+}
+
+function StreamUrlFetchChip({ count }) {
+  if (count == null || !Number.isFinite(count) || count <= 0) return null;
+  const n = Math.max(0, Math.floor(count));
+  return (
+    <CoreUIButton
+      as="span"
+      size="sm"
+      variant="ghost"
+      className="proxy-live-notification-token-chip"
+      aria-live="polite"
+      aria-label={`${n} URLs fetched`}
+    >
+      URL fetch: {n}
+    </CoreUIButton>
+  );
+}
+
+function StreamPreview({ preview }) {
+  const text = preview && preview.text ? String(preview.text) : '';
+  const shown = text && preview?.truncated ? `\u2026${text}` : text;
+  return (
+    <div className="proxy-live-notification-stream-preview" aria-live="polite">
+      <span>{shown}</span>
+    </div>
+  );
+}
+
+function StreamTokenChip({ tokens }) {
+  if (tokens == null || !Number.isFinite(tokens)) return null;
+  const n = Math.max(0, Math.floor(tokens));
+  return (
+    <CoreUIButton
+      as="span"
+      size="sm"
+      variant="ghost"
+      className="proxy-live-notification-token-chip"
+      aria-live="polite"
+      aria-label={`${n} tokens streamed`}
+    >
+      {n} tok
+    </CoreUIButton>
+  );
 }
 
 function computeGenTokensPerSecond(trace) {
@@ -231,7 +330,7 @@ function TraceCountBadge({ count }) {
 }
 
 function renderLlmWindDownCard(wd, onOpenLlmProxyTrace) {
-  const { endsAt, status, model, traceId, chainId, steps, brandKey, traceCount, toolLimitWarning } = wd;
+  const { endsAt, status, model, traceId, chainId, steps, brandKey, traceCount, toolLimitWarning, streamTokens, urlFetchCount, streamPreview } = wd;
   const stepCapsules = buildStepCapsules(steps);
   return (
     <div className="proxy-live-notification notification-proxy-embed notification-proxy-embed--winddown">
@@ -275,7 +374,10 @@ function renderLlmWindDownCard(wd, onOpenLlmProxyTrace) {
         <CoreUIButton size="sm" variant="ghost" onClick={onOpenLlmProxyTrace}>
           Traces
         </CoreUIButton>
+        <StreamTokenChip tokens={streamTokens} />
+        <StreamUrlFetchChip count={urlFetchCount} />
       </div>
+      <StreamPreview preview={streamPreview} />
     </div>
   );
 }
@@ -294,6 +396,9 @@ function renderLlmBusyCard(proxyPayload, busyLlm, onOpenLlmProxyTrace, traceCoun
   const genTps = computeGenTokensPerSecond(trace);
   const tpsDisplay = genTps != null && genTps.value > 0 ? `${genTps.value.toFixed(2)} tok/s` : null;
   const tpsTitle = genTps != null ? genTpsSourceTitle(genTps.source) : null;
+  const streamTokens = liveStreamCompletionTokens(trace);
+  const urlFetchCount = liveUrlFetchCount(trace);
+  const streamPreview = liveStreamPreview(trace);
   return (
     <div className="proxy-live-notification notification-proxy-embed">
       {busyLlm ? (
@@ -351,7 +456,10 @@ function renderLlmBusyCard(proxyPayload, busyLlm, onOpenLlmProxyTrace, traceCoun
         <CoreUIButton size="sm" variant="ghost" onClick={onOpenLlmProxyTrace}>
           Traces
         </CoreUIButton>
+        <StreamTokenChip tokens={streamTokens} />
+        <StreamUrlFetchChip count={urlFetchCount} />
       </div>
+      <StreamPreview preview={streamPreview} />
     </div>
   );
 }
@@ -431,21 +539,28 @@ export default function ProxiesLiveNotificationBridge({
 
   useEffect(() => {
     let cancelled = false;
+    let timerId = 0;
+    let latest = null;
 
-    const tick = async () => {
+    const run = async () => {
+      const started = Date.now();
       try {
         const p = await getProxyTraceCurrent();
-        if (!cancelled) setProxyPayload(p || null);
+        latest = p || null;
+        if (!cancelled) setProxyPayload(latest);
       } catch {
         /* keep previous */
       }
+      if (cancelled) return;
+      const interval = payloadHasSseStream(latest) ? STREAM_POLL_MS : POLL_MS;
+      const wait = Math.max(0, interval - (Date.now() - started));
+      timerId = window.setTimeout(run, wait);
     };
 
-    tick();
-    const id = setInterval(tick, POLL_MS);
+    run();
     return () => {
       cancelled = true;
-      clearInterval(id);
+      window.clearTimeout(timerId);
     };
   }, []);
 
@@ -498,6 +613,9 @@ export default function ProxiesLiveNotificationBridge({
         toolLimitWarning,
         steps: Array.isArray(trace.steps) ? trace.steps : [],
         traceCount: Array.isArray(group?.traces) ? group.traces.length : 1,
+        streamTokens: liveStreamCompletionTokens(trace),
+        urlFetchCount: liveUrlFetchCount(trace),
+        streamPreview: liveStreamPreview(trace),
       });
       bumpLlmWindDowns();
     });

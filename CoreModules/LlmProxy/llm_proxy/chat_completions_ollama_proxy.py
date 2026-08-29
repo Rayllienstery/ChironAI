@@ -358,21 +358,99 @@ def _output_budget_exhaustion_error(trace: dict[str, Any], metrics_src: dict[str
     )
 
 
-def passthrough_think_from_body(body: dict[str, Any]) -> bool | str | None:
-    """Pass Ollama ``think`` only when the client included the key (mediator; no derived mapping)."""
-    if "think" not in body:
+_OLLAMA_THINK_LEVELS = frozenset({"low", "medium", "high", "max"})
+_OLLAMA_THINK_LEVEL_ALIASES = {
+    "minimal": "low",
+    "xhigh": "high",
+    "ultra": "max",
+}
+_OLLAMA_THINK_OFF = frozenset({"none", "off", "false", "0", "no"})
+_OLLAMA_THINK_ON = frozenset({"true", "on", "yes", "1"})
+
+
+def coerce_ollama_think_value(raw: Any) -> bool | str | None:
+    """Normalize client think/reasoning fields to Ollama ``think`` (bool or level)."""
+    if raw is None:
         return None
-    raw = body.get("think")
     if isinstance(raw, bool):
         return raw
-    if isinstance(raw, str):
-        return raw
-    if isinstance(raw, (int, float)):
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
         if raw == 1:
             return True
         if raw == 0:
             return False
+        return None
+    if isinstance(raw, str):
+        s = raw.strip().lower()
+        if not s:
+            return None
+        if s in _OLLAMA_THINK_LEVEL_ALIASES:
+            return _OLLAMA_THINK_LEVEL_ALIASES[s]
+        if s in _OLLAMA_THINK_LEVELS:
+            return s
+        if s in _OLLAMA_THINK_OFF:
+            return False
+        if s in _OLLAMA_THINK_ON:
+            return True
+        return None
+    if isinstance(raw, dict):
+        if raw.get("enabled") is False:
+            return False
+        return coerce_ollama_think_value(
+            raw.get("effort") or raw.get("level") or raw.get("reasoning_effort")
+        )
     return None
+
+
+def body_has_explicit_think(body: dict[str, Any] | None) -> bool:
+    """True when the client asked for think/reasoning (OpenAI or Ollama shape)."""
+    if not isinstance(body, dict):
+        return False
+    if "think" in body or "reasoning_effort" in body:
+        return True
+    if str(body.get("reasoning_level") or "").strip():
+        return True
+    reasoning = body.get("reasoning")
+    if isinstance(reasoning, str) and reasoning.strip():
+        return True
+    if isinstance(reasoning, dict):
+        if reasoning.get("enabled") is False:
+            return True
+        return any(
+            reasoning.get(key) not in (None, "")
+            for key in ("effort", "level", "reasoning_effort", "enabled")
+        )
+    return False
+
+
+def passthrough_think_from_body(body: dict[str, Any]) -> bool | str | None:
+    """Pass Ollama ``think`` from native ``think`` or OpenAI reasoning fields."""
+    if not isinstance(body, dict):
+        return None
+    if "think" in body:
+        coerced = coerce_ollama_think_value(body.get("think"))
+        if coerced is not None:
+            return coerced
+    if "reasoning_effort" in body:
+        coerced = coerce_ollama_think_value(body.get("reasoning_effort"))
+        if coerced is not None:
+            return coerced
+    reasoning = body.get("reasoning")
+    if isinstance(reasoning, (str, dict, bool, int, float)):
+        coerced = coerce_ollama_think_value(reasoning)
+        if coerced is not None:
+            return coerced
+    if "reasoning_level" in body:
+        coerced = coerce_ollama_think_value(body.get("reasoning_level"))
+        if coerced is not None:
+            return coerced
+    return None
+
+
+def explicit_reasoning_level_from_body(body: dict[str, Any] | None) -> str | None:
+    """String reasoning level for traces/prompts; ignores bool on/off."""
+    value = passthrough_think_from_body(body or {})
+    return value if isinstance(value, str) else None
 
 
 def _ollama_native_think_broken_for_model(model_name: str | None) -> bool:
@@ -401,8 +479,9 @@ def effective_ollama_think_from_body(
     For the original Qwen3 family, omitting ``think`` often leaves the model's template with
     thinking enabled by default, which yields placeholder-only output.  Always send explicit
     ``think: false`` for those models.  Newer versions (qwen3.5, qwen3.1, …) are not affected.
-    For other models, passthrough only when the client sent ``think`` (mediator).
-    When ``capabilities`` is known and excludes thinking, omit ``think`` so Ollama uses model defaults.
+    For other models, pass through client ``think``, OpenAI ``reasoning_effort`` /
+    ``reasoning``, or ``reasoning_level``. When ``capabilities`` is known and
+    excludes thinking, omit ``think`` so Ollama uses model defaults.
     """
     raw = passthrough_think_from_body(body)
     if _ollama_native_think_broken_for_model(ollama_model):

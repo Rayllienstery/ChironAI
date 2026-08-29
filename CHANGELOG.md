@@ -1,6 +1,47 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.10.12] - 2026-08-29
+
+### Added
+- RAG Fusion Proxy live notification shows `URL fetch: n` next to the token chip when the current turn used web_search / web_extract.
+
+## [0.10.11] - 2026-08-29
+
+### Fixed
+- RAG Fusion Proxy live stream preview is always a 65px / 5-line slot from the first paint, so the card height no longer changes when text arrives.
+
+## [0.10.10] - 2026-08-29
+
+### Changed
+- RAG Fusion Proxy live stream preview is a fixed 5-line block so the notification card does not grow as tokens arrive.
+
+## [0.10.9] - 2026-08-29
+
+### Fixed
+- RAG Fusion Proxy now forwards OpenAI reasoning fields (`reasoning_effort`, `reasoning`, `reasoning_level`) to Ollama as `think` levels (`low`/`medium`/`high`/`max`) instead of collapsing them to a boolean.
+
+## [0.10.8] - 2026-08-29
+
+### Added
+- RAG Fusion Proxy live notification shows the last 200 characters of SSE output under Traces.
+
+## [0.10.7] - 2026-08-29
+
+### Added
+- RAG Fusion Proxy live notification shows streamed token count next to Traces and refreshes it 5 times per second during SSE generation.
+
+## [0.10.6] - 2026-08-29
+
+### Fixed
+- Extension sandbox now forwards `stream_invoke` events incrementally instead of buffering the full stream, so Open WebUI and other SSE clients see tokens as they arrive.
+- SSE `/v1/chat/completions` now closes after `[DONE]` instead of holding the HTTP connection open for journal writes.
+
+## [0.10.5] - 2026-08-29
+
+### Changed
+- LLM Proxy Builds Extreme prefab now uses the real 256K window (`num_ctx` 262144) instead of 202752.
+
 ## [0.10.4] - 2026-08-21
 
 ### Fixed

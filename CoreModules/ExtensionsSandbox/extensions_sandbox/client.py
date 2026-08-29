@@ -334,6 +334,28 @@ class ExtensionWorkerClient:
                     if attempt > self.MAX_AUTO_RESTARTS:
                         raise
 
+    def iter_call(
+        self,
+        method: str,
+        params: dict[str, Any] | None = None,
+        *,
+        timeout_sec: float | None = None,
+    ):
+        """Yield ``stream_event`` payloads until the worker finishes the RPC.
+
+        Unlike ``call``, this forwards events as they arrive instead of waiting
+        for the worker to materialize the full result list.
+        """
+        with self._lock:
+            if self._blocked:
+                raise ExtensionWorkerError(self._blocked_error_message())
+            if self._manual_stopped:
+                raise ExtensionWorkerError("extension worker is stopped until manual restart")
+            yield from self._raw_iter_call(method, params, timeout_sec=timeout_sec)
+            self.status = "ready"
+            self.error = ""
+            self._consecutive_failures = 0
+
     def _raw_call(self, method: str, params: dict[str, Any] | None = None, *, timeout_sec: float | None = None) -> Any:
         with self._lock:
             if self._closed:
@@ -347,6 +369,25 @@ class ExtensionWorkerClient:
             req_id = self._next()
             self._write({"type": "request", "id": req_id, "method": method, "params": dict(params or {})})
             return self._wait_response(req_id, timeout_sec or self.timeout_sec)
+
+    def _raw_iter_call(
+        self,
+        method: str,
+        params: dict[str, Any] | None = None,
+        *,
+        timeout_sec: float | None = None,
+    ):
+        if self._closed:
+            raise ExtensionWorkerError("extension worker is closed")
+        if self._proc is None:
+            raise ExtensionWorkerError("extension worker is unavailable")
+        if self._proc.poll() is not None:
+            self.status = "crashed"
+            self.error = self._stderr_tail()
+            raise ExtensionWorkerError(f"extension worker exited with {self._proc.returncode}: {self.error}")
+        req_id = self._next()
+        self._write({"type": "request", "id": req_id, "method": method, "params": dict(params or {})})
+        yield from self._wait_stream(req_id, timeout_sec or self.timeout_sec)
 
     def _should_auto_restart(self, *, method: str = "") -> bool:
         if self._closed or self._blocked or self._manual_stopped:
@@ -431,6 +472,52 @@ class ExtensionWorkerClient:
                 continue
             if msg.get("ok"):
                 return msg.get("result")
+            self.status = "error"
+            self.error = str(msg.get("error") or "worker call failed")
+            raise ExtensionWorkerError(self.error)
+
+    def _wait_stream(self, req_id: int, timeout_sec: float):
+        idle_timeout = float(timeout_sec)
+        deadline = time.monotonic() + idle_timeout
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                self.status = "timeout"
+                self.error = f"worker call timed out: request {req_id}"
+                raise ExtensionWorkerTimeout(self.error)
+            try:
+                line = self._lines.get(timeout=min(0.2, remaining))
+            except queue.Empty:
+                if self._proc is not None and self._proc.poll() is not None:
+                    self.status = "crashed"
+                    self.error = self._stderr_tail()
+                    raise ExtensionWorkerError(
+                        f"extension worker exited with {self._proc.returncode}: {self.error}"
+                    )
+                continue
+            if line is None:
+                self.status = "crashed"
+                self.error = self._stderr_tail()
+                raise ExtensionWorkerError(f"extension worker closed stdout: {self.error}")
+            try:
+                msg = json.loads(line)
+            except json.JSONDecodeError as e:
+                self.status = "protocol_error"
+                self.error = f"invalid worker JSON: {line[:200]}"
+                raise ExtensionWorkerError(self.error) from e
+            mtype = msg.get("type")
+            if mtype == "host_call":
+                self._handle_host_call(msg)
+                continue
+            msg_id = int(msg.get("id") or -1)
+            if mtype == "stream_event" and msg_id == req_id:
+                deadline = time.monotonic() + idle_timeout
+                yield msg.get("event")
+                continue
+            if mtype != "response" or msg_id != req_id:
+                continue
+            if msg.get("ok"):
+                return
             self.status = "error"
             self.error = str(msg.get("error") or "worker call failed")
             raise ExtensionWorkerError(self.error)

@@ -273,6 +273,8 @@ Change carefully; if behavior shifts, document and align with team/repo norms.
 
 6. **WebUI LAN exposure** — sensitive management routes under `/api/webui/llm-proxy/*` and similar must not assume the client is local. When the server is bound to `0.0.0.0`, any reachable client can read proxy status/builds. Add loopback or API-key guards for sensitive read endpoints; add tests for both loopback and non-loopback clients.
 
+7. **Local LLM backend process** — OpenCode, Cursor, and other IDE agents that call `http://127.0.0.1:8080/v1` depend on `python -m webui_backend.rag_proxy` (Chiron). Killing “all Python” or anything listening on port `8080` drops the agent’s own API (`ECONNREFUSED`) and looks like a client crash. See §10.5.
+
 Risk and “tail” summary: `docs/legacy_map.md`.
 
 ---
@@ -318,6 +320,7 @@ Risk and “tail” summary: `docs/legacy_map.md`.
 - [ ] If the change adds or exposes a sensitive WebUI route: is it protected when the server binds to non-loopback addresses?
 - [ ] If the change is dual-client (loopback + LAN/remote): did you verify **both** user-story paths and avoid loopback UI stubs? (§10.4)
 - [ ] If the task closes a tech-debt item: is `TECH_DEBT_TODO.md` updated (status, notes, new items discovered)?
+- [ ] Did you avoid killing `webui_backend.rag_proxy` / listeners on port `8080` / broad `python` process sweeps? (§10.5)
 
 ---
 
@@ -375,6 +378,23 @@ if (isLoopback) {
 ```
 
 When the backend exposes `GET …/status` and localhost is where admins install/configure the feature.
+
+### 10.5 Protect the local Chiron backend (OpenCode / IDE agents)
+
+IDE agents (OpenCode, Cursor, Codex, etc.) often use Chiron as their LLM provider at `http://127.0.0.1:8080/v1`. That endpoint is served by **`python -m webui_backend.rag_proxy`** (started via `build_and_run.bat` or equivalent).
+
+**MUST NOT:**
+
+- Stop, kill, or restart “any / all Python” processes (`taskkill`, `Stop-Process`, `pkill`, broad `Get-Process python | Stop-Process`, etc.).
+- Free or rebind port **8080** unless the maintainer explicitly asked to restart Chiron.
+- Treat `rag_proxy`, `extensions_sandbox.worker`, or other Chiron host processes as “the agent under test” to be stopped between UI experiments.
+
+**MUST:**
+
+- If you need to stop a **project-specific** helper you started yourself, kill **only that PID** (or the exact script path you launched).
+- If you see `Cannot connect to API` / `ECONNREFUSED 127.0.0.1:8080`, tell the user the Chiron backend is down and how to start it (`build_and_run.bat`) — do not “fix” it by killing more processes.
+
+Stopping the backend mid-session breaks the agent that issued the kill and is reported by users as “OpenCode crashed.”
 
 ---
 

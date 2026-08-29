@@ -193,6 +193,39 @@ def test_proxy_logs_delete_and_trace_current_routes_remain_available(monkeypatch
     }
 
 
+def test_update_live_stream_progress_patches_tokens_without_buffering() -> None:
+    from api.http.proxy_trace import (
+        clear_proxy_trace_buffer,
+        get_active_traces,
+        get_current_trace,
+        recent_proxy_traces,
+        set_current_trace,
+        update_live_stream_progress,
+    )
+
+    set_current_trace(None)
+    clear_proxy_trace_buffer()
+    trace = {
+        "trace_id": "trace-live-tok-test",
+        "request": {"stream": True},
+        "ollama": {},
+        "response": {},
+        "steps": [],
+    }
+    set_current_trace(trace)
+    before = len(recent_proxy_traces(80))
+    update_live_stream_progress(trace_id="trace-live-tok-test", completion_tokens=42)
+    assert len(recent_proxy_traces(80)) == before
+    current = get_current_trace() or {}
+    assert int((current.get("ollama") or {}).get("tokens_estimates", {}).get("completion_tokens_estimated") or 0) == 42
+    assert any(
+        int((row.get("ollama") or {}).get("tokens_estimates", {}).get("completion_tokens_estimated") or 0) == 42
+        for row in get_active_traces()
+    )
+    set_current_trace(None)
+    clear_proxy_trace_buffer()
+
+
 def test_notifications_routes_use_observability_repository(monkeypatch: pytest.MonkeyPatch) -> None:
     import api.http.webui_observability_routes as wr
 

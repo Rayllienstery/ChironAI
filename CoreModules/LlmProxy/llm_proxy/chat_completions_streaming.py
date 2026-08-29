@@ -101,6 +101,7 @@ def iter_sse_from_ollama_stream_events(
     on_reasoning_guard: Callable[[], None] | None = None,
     upstream_model: str = "",
     trace: dict[str, Any] | None = None,
+    on_visible_progress: Callable[[str], None] | None = None,
 ) -> Iterator[str]:
     """Map Ollama stream events to OpenAI-style SSE chunk lines."""
     for kind, data in events:
@@ -117,6 +118,8 @@ def iter_sse_from_ollama_stream_events(
                 include_reasoning_content=include_reasoning_content,
             )
             yield openai_chat_completion_chunk(completion_id, client_visible_model, delta=delta)
+            if on_visible_progress is not None:
+                on_visible_progress(accumulator.visible_content)
             guard_error = stream_reasoning_guard_message(
                 reasoning_text=accumulator.reasoning_content,
                 final_text=accumulator.final_content,
@@ -130,6 +133,8 @@ def iter_sse_from_ollama_stream_events(
                 accumulator.visible_parts.append(guard_error)
                 accumulator.final_parts.append(guard_error)
                 yield sse_content_chunk(completion_id, client_visible_model, guard_error)
+                if on_visible_progress is not None:
+                    on_visible_progress(accumulator.visible_content)
                 return
         elif kind == "tool_calls" and data:
             accumulator.tool_calls_raw = data if isinstance(data, list) else []
@@ -147,6 +152,8 @@ def iter_sse_from_ollama_stream_events(
             accumulator.visible_parts.append(err_text)
             accumulator.final_parts.append(err_text)
             yield sse_content_chunk(completion_id, client_visible_model, err_text)
+            if on_visible_progress is not None:
+                on_visible_progress(accumulator.visible_content)
             return
 
 

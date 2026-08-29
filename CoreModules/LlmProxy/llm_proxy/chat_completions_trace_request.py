@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
+from urllib.parse import urlparse
 
 from llm_proxy.tool_helpers import _extract_tool_name
 
@@ -134,3 +136,169 @@ def enrich_chat_trace_request(
         request["tool_choice_raw"] = body.get("tool_choice_raw")
     if body.get("tool_choice_normalized") is not None:
         request["tool_choice_normalized"] = body.get("tool_choice_normalized")
+
+
+_WEB_SOURCE_TOOLS = frozenset({"web_search", "web_extract"})
+_WEB_SOURCE_URL_KEYS = frozenset({"url", "href", "link"})
+_WEB_SOURCE_NEST_KEYS = frozenset({"urls", "web", "results", "data"})
+_WEB_SOURCE_TRAILING_JUNK = ".,);]>\"'"
+
+
+def _normalize_web_source_url(value: str) -> str:
+    text = (value or "").strip().strip(_WEB_SOURCE_TRAILING_JUNK)
+    if not text:
+        return ""
+    parsed = urlparse(text)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        return ""
+    return text
+
+
+def _iter_web_source_urls(obj: Any, *, allow_bare_strings: bool = False):
+    if isinstance(obj, str):
+        if allow_bare_strings:
+            url = _normalize_web_source_url(obj)
+            if url:
+                yield url
+        return
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            if key in _WEB_SOURCE_URL_KEYS and isinstance(value, str):
+                url = _normalize_web_source_url(value)
+                if url:
+                    yield url
+            elif key in _WEB_SOURCE_NEST_KEYS:
+                yield from _iter_web_source_urls(
+                    value,
+                    allow_bare_strings=allow_bare_strings or key == "urls",
+                )
+        return
+    if isinstance(obj, list):
+        for item in obj:
+            yield from _iter_web_source_urls(item, allow_bare_strings=allow_bare_strings)
+
+
+def _parse_jsonish(value: Any) -> Any:
+    if isinstance(value, (dict, list)):
+        return value
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not text or text[0] not in "{[":
+        return None
+    try:
+        return json.loads(text)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+
+
+def _message_text(message: dict[str, Any]) -> str:
+    content = message.get("content")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for part in content:
+            if isinstance(part, str) and part.strip():
+                parts.append(part)
+            elif isinstance(part, dict):
+                text = part.get("text")
+                if isinstance(text, str) and text.strip():
+                    parts.append(text)
+        return "\n".join(parts)
+    for key in ("output", "result", "text"):
+        raw = message.get(key)
+        if isinstance(raw, str) and raw.strip():
+            return raw
+    return ""
+
+
+def _looks_like_web_payload(obj: Any) -> bool:
+    if not isinstance(obj, dict):
+        return False
+    data = obj.get("data")
+    if isinstance(data, dict) and isinstance(data.get("web"), list):
+        return True
+    results = obj.get("results")
+    if isinstance(results, list) and results:
+        first = results[0]
+        if isinstance(first, dict) and (
+            isinstance(first.get("url"), str) or isinstance(first.get("href"), str)
+        ):
+            return True
+    return False
+
+
+def _assistant_tool_names_by_id(messages: list[Any]) -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    for message in messages:
+        if not isinstance(message, dict) or message.get("role") != "assistant":
+            continue
+        for call in message.get("tool_calls") or []:
+            if not isinstance(call, dict):
+                continue
+            call_id = str(call.get("id") or "").strip()
+            func = call.get("function") if isinstance(call.get("function"), dict) else {}
+            name = str(func.get("name") or call.get("name") or "").strip()
+            if call_id and name:
+                mapping[call_id] = name
+    return mapping
+
+
+def count_web_source_urls_from_messages(messages: list[Any] | None) -> int:
+    """Unique http(s) URLs from this turn's web_search / web_extract tool results."""
+    if not isinstance(messages, list):
+        return 0
+    last_user = -1
+    for index, message in enumerate(messages):
+        if isinstance(message, dict) and message.get("role") == "user":
+            last_user = index
+    turn = messages[last_user + 1 :] if last_user >= 0 else messages
+    id_to_name = _assistant_tool_names_by_id(messages)
+    seen: set[str] = set()
+    count = 0
+
+    def _add(obj: Any, *, allow_bare_strings: bool = False) -> None:
+        nonlocal count
+        for url in _iter_web_source_urls(obj, allow_bare_strings=allow_bare_strings):
+            key = url.rstrip("/").lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            count += 1
+
+    for message in turn:
+        if not isinstance(message, dict):
+            continue
+        content = message.get("content")
+        parsed = content if isinstance(content, (dict, list)) else _parse_jsonish(_message_text(message))
+        role = message.get("role")
+        name = str(message.get("name") or "").strip()
+        if role == "tool":
+            call_id = str(message.get("tool_call_id") or message.get("toolCallId") or "").strip()
+            if not name and call_id:
+                name = id_to_name.get(call_id, "")
+            if name in _WEB_SOURCE_TOOLS or _looks_like_web_payload(parsed):
+                _add(parsed)
+            continue
+        if _looks_like_web_payload(parsed):
+            _add(parsed)
+    return count
+
+
+def attach_url_fetch_count(trace: dict[str, Any], messages: list[Any] | None) -> int:
+    """Store this turn's web URL count on the live trace. Returns 0 when unused."""
+    count = count_web_source_urls_from_messages(messages)
+    request = trace.setdefault("request", {})
+    if not isinstance(request, dict):
+        request = {}
+        trace["request"] = request
+    if count:
+        request["url_fetch_count"] = count
+        internet = trace.get("internet")
+        if not isinstance(internet, dict):
+            internet = {}
+            trace["internet"] = internet
+        internet["url_fetch_count"] = count
+    return count
+

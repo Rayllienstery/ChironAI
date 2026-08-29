@@ -136,7 +136,7 @@ export default function LlmProxyWizardSteps({
                   <div className="llm-proxy-toggle-row">
                     <span className="llm-proxy-toggle-label">
                       <span className="llm-proxy-toggle-icon material-symbols-outlined" aria-hidden="true">psychology</span>
-                      Provider think mode
+                      Advertise thinking
                     </span>
                     <label className="coreui-switch">
                       <input
@@ -148,8 +148,9 @@ export default function LlmProxyWizardSteps({
                     </label>
                   </div>
                   <p className="llm-proxy-toggle-explanation">
-                    Enables extended "thinking" output for models that support it (e.g. DeepSeek-R1, QwQ). The model
-                    produces a hidden reasoning chain before the final answer, improving quality on complex tasks.
+                    Tell clients (Open WebUI, Hermes, IDE agents) that this build&apos;s upstream model can think.
+                    Does not set a reasoning level — that is chosen in the client per request
+                    (<code>reasoning_effort</code> / think level).
                   </p>
                 </div>
 

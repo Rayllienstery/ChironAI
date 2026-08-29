@@ -7,7 +7,6 @@ import logging
 from typing import Any
 
 from application.rag.proxy_settings_contract import load_proxy_settings
-from llm_proxy.chat_completions_ollama_proxy import gpt_oss_model_requires_reasoning_level
 from llm_proxy.pipeline_steps import get_proxy_pipeline_step_meta
 
 _RAG_LOG = logging.getLogger("llm_proxy")
@@ -19,19 +18,13 @@ def build_forced_think_value(
     active_build: dict[str, Any] | None,
     model_name: str | None,
 ) -> bool | str | None:
-    if not isinstance(active_build, dict) or "think" in body:
-        return None
-    if gpt_oss_model_requires_reasoning_level(model_name):
-        if active_build.get("chat_think"):
-            level = str(
-                body.get("reasoning_level")
-                or body.get("reasoning")
-                or active_build.get("reasoning_level")
-                or ""
-            ).strip().lower()
-            return level if level in {"low", "medium", "high"} else "medium"
-        return None
-    return bool(active_build.get("chat_think"))
+    """Builds must not force a think level — clients (OWUI/agent) choose it.
+
+    ``chat_think`` only advertises thinking capability on ``/v1/models``.
+    Kept for call-site compatibility; always returns None.
+    """
+    _ = (body, active_build, model_name)
+    return None
 
 
 def log_rag_error(stage: str, error: Exception) -> None:

@@ -268,7 +268,7 @@ export default function LlmProxyBuildsListPanel({
                     { key: 'num_predict', label: 'Pred', icon: 'data_object', val: v => v },
                     { key: 'max_agent_steps', label: 'Steps', icon: 'route', val: v => v },
                     { key: 'se_streaming', label: 'Stream', icon: 'stream', val: v => v === false ? 'off' : 'on' },
-                    { key: 'chat_think', label: 'Think', icon: 'psychology', val: v => v ? 'on' : 'off' },
+                    { key: 'chat_think', label: 'Think advertise', icon: 'psychology', val: v => v ? 'on' : 'off' },
                   ]
                 },
                 {

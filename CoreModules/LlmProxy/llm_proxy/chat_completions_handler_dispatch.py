@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from flask import Response
+from flask import Response, stream_with_context
 
 from llm_proxy.chat_completions_gemini_native import (
     _interpolate_native_tools_for_gemini,
@@ -57,6 +57,16 @@ from llm_proxy.tool_helpers import (
     _client_selection_snippet,
     _workspace_selection_snippet,
 )
+
+
+def _sse_response(iterator: Any) -> Response:
+    # Do not set direct_passthrough=True: generators yield str SSE lines, and
+    # Waitress chunked encoding requires bytes (TypeError: str + b"\\r\\n").
+    return Response(
+        stream_with_context(iterator),
+        mimetype=_SSE_MIMETYPE,
+        headers=_SSE_RESPONSE_HEADERS,
+    )
 
 
 def dispatch_response(
@@ -158,7 +168,7 @@ def dispatch_response(
             w.set_proxy_status(w.status_response)
             trace["request"]["ollama_stream_timeout_disabled"] = True
 
-            return Response(
+            return _sse_response(
                 iter_native_tools_sse_stream(
                     NativeToolsStreamContext(
                         w=w,
@@ -188,9 +198,7 @@ def dispatch_response(
                         log_rag_error_private=log_rag_error_private,
                         rag_request_completed_payload=rag_request_completed_payload,
                     )
-                ),
-                mimetype=_SSE_MIMETYPE,
-                headers=_SSE_RESPONSE_HEADERS,
+                )
             )
 
         return try_build_native_tools_nonstream_response(
@@ -299,7 +307,7 @@ def dispatch_response(
     if stream and build_sse_streaming:
         w.set_proxy_status(w.status_response)
 
-        return Response(
+        return _sse_response(
             iter_standard_sse_stream(
                 StandardStreamContext(
                     w=w,
@@ -326,9 +334,7 @@ def dispatch_response(
                     log_rag_error_private=log_rag_error_private,
                     rag_request_completed_payload=rag_request_completed_payload,
                 )
-            ),
-            mimetype=_SSE_MIMETYPE,
-            headers=_SSE_RESPONSE_HEADERS,
+            )
         )
     return build_standard_nonstream_response(
         StandardNonStreamContext(

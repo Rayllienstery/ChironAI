@@ -63,6 +63,7 @@ from llm_proxy.chat_completions_ollama_proxy import (
     _effective_rag_collection_name,
     _input_budget_from_context,
     effective_ollama_think_from_body,
+    explicit_reasoning_level_from_body,
 )
 from llm_proxy.chat_completions_ollama_proxy import (
     ollama_messages_have_images as _ollama_messages_have_images,
@@ -94,6 +95,7 @@ from llm_proxy.chat_completions_run_phases import (
     _new_chat_trace_dict,
 )
 from llm_proxy.chat_completions_trace_request import (
+    attach_url_fetch_count,
     build_chat_trace_request_dict,
     enrich_chat_trace_request,
 )
@@ -236,9 +238,8 @@ def run_chat_completions(
             with contextlib.suppress(TypeError, ValueError):
                 build_extra_options["top_p"] = float(active_build["top_p"])
         dumb_build_pipeline = True
-        _rl_b = str(active_build.get("reasoning_level") or "").strip()
-        if _rl_b and not body.get("reasoning_level") and not body.get("reasoning"):
-            body["reasoning_level"] = _rl_b
+        # Reasoning level is client-owned (OWUI / Hermes / agent). Builds only
+        # advertise thinking via chat_think on /v1/models — never inject a level.
 
     if active_build and dumb_build_pipeline:
         _build_provider_id = str(active_build.get("provider_id") or "").strip()
@@ -286,7 +287,7 @@ def run_chat_completions(
     if openai_tool_choice_means_none(tool_choice):
         tool_choice_effective = "none"
     testing_disable_rerank = bool(body.get("testing_disable_rerank"))
-    explicit_reasoning = body.get("reasoning_level") or body.get("reasoning")
+    explicit_reasoning = explicit_reasoning_level_from_body(body)
     if dumb_build_pipeline and "include_rag_metadata" not in body:
         include_rag_metadata = bool(proxy_settings.get("include_rag_metadata", False))
     else:
@@ -450,6 +451,11 @@ def run_chat_completions(
         body=body,
         append_trace_warning=_append_trace_warning,
     )
+    url_fetch_count = attach_url_fetch_count(trace, messages)
+    if url_fetch_count:
+        from api.http.proxy_trace import update_live_url_fetch_count
+
+        update_live_url_fetch_count(trace_id=trace_id, url_fetch_count=url_fetch_count)
 
     # IDE-independent mode: do not fail fast solely on schema checks.
     # Some clients expose incomplete tool schemas but still accept write payloads at runtime.

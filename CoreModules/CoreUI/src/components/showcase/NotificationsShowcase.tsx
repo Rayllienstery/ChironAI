@@ -66,6 +66,14 @@ export default function NotificationsShowcase() {
                   <span className="proxy-live-notification-label">Model</span>
                   <span className="proxy-live-notification-value">qwen2.5-coder:7b</span>
                 </div>
+                <div className="proxy-live-notification-actions">
+                  <button type="button" className="coreui-btn coreui-btn-ghost coreui-btn-small">Traces</button>
+                  <span className="coreui-btn coreui-btn-ghost coreui-btn-small proxy-live-notification-token-chip">128 tok</span>
+                  <span className="coreui-btn coreui-btn-ghost coreui-btn-small proxy-live-notification-token-chip">URL fetch: 6</span>
+                </div>
+                <div className="proxy-live-notification-stream-preview">
+                  …the liver oxidizes ethanol to acetaldehyde, then to acetate.
+                </div>
               </div>
               <div className="notification-center-module-footer">
                 <span className="notification-center-module-footer-source">RAG Fusion Proxy</span>
