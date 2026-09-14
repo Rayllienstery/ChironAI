@@ -3,8 +3,8 @@
 > Generated from the live OpenAPI document. Do not edit by hand; run `python scripts/gen_api_docs.py`.
 
 - OpenAPI: `3.1.0`
-- Version: `0.10.4`
-- Paths: `137`
+- Version: `0.10.39`
+- Paths: `142`
 
 Chiron AI PRE-RELEASE OpenAPI description generated from Flask routes.
 
@@ -559,7 +559,7 @@ Responses:
 
 **Summary:** Get dashboard metrics
 
-Registered Flask endpoint `webui.dashboard_metrics` for `GET /api/webui/dashboard-metrics`. Payload shape is currently described generically until the route is promoted into core contracts.
+Returns GPU, system CPU, system RAM, and ChironAI RAM (host process tree, Hermes, and managed Docker containers) for the CoreUI header pills.
 
 - Operation ID: `webui_dashboard_metrics_get`
 - Flask endpoint: `webui.dashboard_metrics`
@@ -569,7 +569,7 @@ Responses:
 
 | Status | Description | Schema |
 |--------|-------------|--------|
-| 200 | OK | application/json: GenericObject |
+| 200 | GPU, CPU, and RAM telemetry for the CoreUI header. | application/json: DashboardMetricsResponse |
 
 ### Dependencies
 
@@ -730,6 +730,23 @@ Responses:
 | Status | Description | Schema |
 |--------|-------------|--------|
 | 200 | OK | application/json: GenericObject |
+| 400 | Bad request | application/json: ErrorResponse |
+
+#### `POST /api/webui/docker/engine/start`
+
+**Summary:** Start Docker Engine
+
+Starts Docker Desktop on Windows when the engine is not ready and returns immediately so CoreUI can poll until it is up.
+
+- Operation ID: `webui_docker_start_engine_post`
+- Flask endpoint: `webui.docker_start_engine`
+- Request body: `application/json: GenericObject`
+
+Responses:
+
+| Status | Description | Schema |
+|--------|-------------|--------|
+| 200 | Docker engine start result. | application/json: DockerEngineStartResponse |
 | 400 | Bad request | application/json: ErrorResponse |
 
 #### `GET /api/webui/docker/events`
@@ -1264,6 +1281,63 @@ Responses:
 | Status | Description | Schema |
 |--------|-------------|--------|
 | 200 | OK | application/json: GenericObject |
+
+### Host
+
+#### `GET /api/webui/host/phone-scripts`
+
+**Summary:** List phone-host scripts
+
+Returns the iPhone phone-host scripts and whether each is enabled for Shortcuts/SSH.
+
+- Operation ID: `webui_get_host_phone_scripts_get`
+- Flask endpoint: `webui.get_host_phone_scripts`
+- Request body: `-`
+
+Responses:
+
+| Status | Description | Schema |
+|--------|-------------|--------|
+| 200 | Phone-host scripts and enabled flags. | application/json: PhoneHostScriptsResponse |
+
+#### `PUT /api/webui/host/phone-scripts/{script_id}`
+
+**Summary:** Enable or disable a phone-host script
+
+Persists the enabled flag for one phone-host script. Disabled scripts refuse to run from SSH.
+
+- Operation ID: `webui_put_host_phone_script_put`
+- Flask endpoint: `webui.put_host_phone_script`
+- Request body: `application/json: PhoneHostScriptEnabledBody`
+
+Parameters:
+
+| Name | In | Required | Schema |
+|------|----|----------|--------|
+| script_id | path | True | string |
+
+Responses:
+
+| Status | Description | Schema |
+|--------|-------------|--------|
+| 200 | Updated phone-host script list. | application/json: PhoneHostScriptsResponse |
+| 400 | Bad request | application/json: ErrorResponse |
+
+#### `GET /api/webui/host/phone-status`
+
+**Summary:** Get compact phone-host status
+
+Returns whether ChironAI is up and whether generation is in flight (live LLM traces or GPU above threshold). Loopback is always allowed. Off-loopback clients must send CHIRONAI_PHONE_STATUS_TOKEN via X-Chiron-Phone-Token or Authorization: Bearer.
+
+- Operation ID: `webui_get_host_phone_status_get`
+- Flask endpoint: `webui.get_host_phone_status`
+- Request body: `-`
+
+Responses:
+
+| Status | Description | Schema |
+|--------|-------------|--------|
+| 200 | Compact host and generation status for iPhone Shortcuts. | application/json: PhoneHostStatusResponse |
 
 ### Live
 
@@ -1879,6 +1953,22 @@ Responses:
 |--------|-------------|--------|
 | 200 | OK | application/json: GenericObject |
 | 400 | Bad request | application/json: ErrorResponse |
+
+#### `GET /api/webui/performance/snapshot`
+
+**Summary:** Get live performance snapshot
+
+Returns system RAM, ChironAI host and managed Docker RAM, GPU telemetry, and the process/container rows for Performance → Details.
+
+- Operation ID: `webui_get_performance_snapshot_get`
+- Flask endpoint: `webui.get_performance_snapshot`
+- Request body: `-`
+
+Responses:
+
+| Status | Description | Schema |
+|--------|-------------|--------|
+| 200 | Live RAM, GPU, and process telemetry. | application/json: PerformanceSnapshotResponse |
 
 #### `GET /api/webui/performance/startup`
 
@@ -3229,10 +3319,14 @@ Responses:
 |------|------|-----------------|
 | AppSettingsResponse | object | - |
 | CoreUiNotification | object | - |
+| DashboardMetricsCpu | object | - |
+| DashboardMetricsRam | object | - |
+| DashboardMetricsResponse | object | - |
 | DependenciesResponse | object | - |
 | Dependency | object | - |
 | DependencyJobResponse | object | - |
 | DependencySource | object | - |
+| DockerEngineStartResponse | object | - |
 | DockerListResponse | object | - |
 | DockerStatusResponse | object | - |
 | ErrorResponse | object | - |
@@ -3264,6 +3358,15 @@ Responses:
 | OpenAiChatCompletionResponse | object | - |
 | OpenAiModelListResponse | object | - |
 | OpenAiModelResponse | object | - |
+| PerformanceAppSlice | object | - |
+| PerformanceGpuSlice | object | - |
+| PerformanceMemorySlice | object | - |
+| PerformanceProcessRow | object | - |
+| PerformanceSnapshotResponse | object | - |
+| PhoneHostScript | object | - |
+| PhoneHostScriptEnabledBody | object | enabled |
+| PhoneHostScriptsResponse | object | - |
+| PhoneHostStatusResponse | object | - |
 | ProviderModelEntry | object | - |
 | RagCollectionsResponse | object | - |
 | RagStatusResponse | object | - |

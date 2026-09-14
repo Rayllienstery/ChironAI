@@ -85,11 +85,25 @@ async def fetch_one_url(
             return CrawlResult(url, False, ""), []
 
         with contextlib.suppress(Exception):
-            await asyncio.sleep(CRAWL_DOM_READY_WAIT_MS / 1000.0)
+            try:
+                await page.wait_for_load_state("networkidle", timeout=4000)
+                await asyncio.sleep(0.3)
+            except Exception:
+                await asyncio.sleep(CRAWL_DOM_READY_WAIT_MS / 1000.0)
 
         try:
             body = await page.evaluate("""() => {
-                const main = document.querySelector('main') || document.querySelector('article') || document.body;
+                const noiseRe = /cookie|consent|gdpr|onetrust|cookiebot|cmp-banner|privacy-banner|cc-banner/i;
+                const nodes = Array.from(document.querySelectorAll(
+                    '[id], [class], [aria-label], [role="dialog"], [role="alertdialog"], [aria-modal="true"]'
+                ));
+                for (const el of nodes) {
+                    const blob = [el.id, el.className, el.getAttribute('aria-label') || '', el.getAttribute('role') || ''].join(' ');
+                    if (noiseRe.test(blob)) {
+                        el.remove();
+                    }
+                }
+                const main = document.querySelector('article') || document.querySelector('main') || document.body;
                 return main ? main.innerHTML : document.body.innerHTML;
             }""")
         except Exception:

@@ -11,6 +11,7 @@ import IconsShowcase from './IconsShowcase';
 import NotificationsShowcase from './NotificationsShowcase';
 import '../../styles/components/DockerTab.css';
 import '../../styles/components/DependenciesTab.css';
+import '../../styles/components/PhoneHostTab.css';
 import '../../styles/components/CoreUIShowcaseTab.css';
 
 export default function CoreUIShowcaseTab() {

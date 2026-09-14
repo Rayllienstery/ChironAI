@@ -284,6 +284,7 @@ def test_extension_manager_bootstraps_builtin_ollama(tmp_path: Path) -> None:
     assert any(item["id"] == "ollama-provider" and item["title"] == "Ollama" for item in installed)
     assert any(item["id"] == "open-webui" for item in installed)
     assert any(item["id"] == "codex-launcher" for item in installed)
+    assert any(item["id"] == "hermes-agent" for item in installed)
     descriptors = bootstrap.runtime.registry.descriptors()
     assert any(desc.id == "ollama" and desc.title == "Ollama" for desc in descriptors), {
         "descriptors": [(desc.id, desc.title) for desc in descriptors],
@@ -296,6 +297,7 @@ def test_extension_manager_bootstraps_builtin_ollama(tmp_path: Path) -> None:
     assert any(tab["id"] == "open-webui" and "status" in tab for tab in tabs)
     assert any(tab["id"] == "ollama" and tab.get("frame", {}).get("id") == "ollama-runtime-frame" for tab in tabs)
     assert any(tab["id"] == "codex" and tab.get("extension_id") == "codex-launcher" for tab in tabs)
+    assert any(tab["id"] == "hermes-agent" and tab.get("extension_id") == "hermes-agent" for tab in tabs)
     assert any(tab["id"] == "open-webui" and tab.get("frame") == {} for tab in tabs)
     assert any(tab["id"] == "ollama" and tab.get("icon_url", "").endswith("/icons/ollama-light.svg") for tab in tabs)
 
@@ -467,6 +469,19 @@ def test_provider_host_context_accepts_docker_runtime() -> None:
     )
 
     assert host.docker_runtime is docker_runtime
+
+
+def test_provider_host_context_accepts_hermes_runtime() -> None:
+    root = Path(__file__).resolve().parents[2]
+    hermes_runtime = object()
+    host = ProviderHostContext(
+        project_root=root,
+        get_settings_repository=lambda: None,
+        chat_client=None,
+        hermes_runtime=hermes_runtime,
+    )
+
+    assert host.hermes_runtime is hermes_runtime
 
 
 def test_extension_manager_exposes_and_controls_sandbox_diagnostics(tmp_path: Path) -> None:
@@ -1092,6 +1107,7 @@ def test_registry_client_reads_local_registry() -> None:
     assert any(row["id"] == "ollama-provider" for row in rows)
     assert any(row["id"] == "open-webui" for row in rows)
     assert any(row["id"] == "codex-launcher" for row in rows)
+    assert any(row["id"] == "hermes-agent" for row in rows)
 
 
 def test_registry_entries_include_github_icon_url(tmp_path: Path) -> None:

@@ -16,7 +16,7 @@ def _base_build() -> dict[str, object]:
         "id": "Hard-worker",
         "backend": "dumb",
         "provider_id": "ollama",
-        "model": "kimi-k2.6:cloud",
+        "model": "glm-5.3-flash:cloud",
         "prompt_name": "system_senior_ios_assistant_v1",
     }
 

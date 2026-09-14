@@ -1,6 +1,168 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.10.39] - 2026-09-14
+
+### Changed
+- The backend no longer holds Windows display/sleep awake for its whole lifetime. RAG Fusion Proxy generation (`POST /v1/chat/completions`, `/v1/messages`, `/v1/responses`) pulses idle timers without `ES_CONTINUOUS`, including a heartbeat while the request is in flight, so the configured screen-off and sleep countdowns restart from last proxy activity.
+
+### Security
+- Ignore local `runtime/` and `_tmp_switch/` dump folders, Hermes history/auth files, Sunshine `apps.json`, and the phone-host shortcut recipe so agent smoke scripts, chat dumps, API keys, and Switch `prod.keys` cannot be committed.
+
+## [0.10.38] - 2026-09-11
+
+### Changed
+- Web search drops leading Kowalski/Skipper vocatives, filters adult/Zhihu junk, and disables the local Bing engine after it returned porn and unrelated YouTube support hits. HTML conversion and Playwright crawl now strip cookie/consent overlays and wait for network idle before extracting `article`/`main`.
+
+## [0.10.37] - 2026-09-09
+
+### Changed
+- LLM Proxy no longer sends `num_ctx` to Ollama for GLM flash/smart (Hermes Flash/Smart, Flash-worker, Hard-worker-2). Compaction follows the advertised 1M window instead of forcing a 256K `num_ctx` that hung or dropped cloud chat.
+
+## [0.10.36] - 2026-09-08
+
+### Fixed
+- LLM Proxy no longer dumps Google's HTML 403 page when Ollama Cloud rejects `/api/chat`; the user-facing error is a short summary.
+
+## [0.10.35] - 2026-09-08
+
+### Fixed
+- LLM Proxy compaction now shortens older tool results inside the current Hermes turn, not only history before the last user, so long Flash-worker loops can fit under the 1M GLM cloud window instead of sending ~1.1M tokens unchanged.
+
+## [0.10.34] - 2026-09-08
+
+### Changed
+- LLM Proxy Flash-worker / Hard-worker-2 (GLM flash and smart) now keep at least a 256K input budget. Compaction follows that window instead of the 380K-char default, so long Hermes turns are no longer clipped at ~110K while the cloud models still advertise 1M.
+
+## [0.10.33] - 2026-09-08
+
+### Fixed
+- Ollama chat conversion folds extra system/developer turns into one leading system message so Qwen 3.8 GGUF tools (Hermes-hybrid-v1) no longer 400 on Hermes Agent prompts.
+
+## [0.10.32] - 2026-09-08
+
+### Added
+- Hermes Agent route `hermes-hybrid-v1` for Qwen3.8 9B heretic NVFP4 GGUF.
+
+## [0.10.31] - 2026-09-08
+
+### Added
+- Hermes Agent routes `hermes-pico-v2` and `hermes-pico-v3` for Gemma 4 E4B heretic GGUFs (Q4_K_M and i1-IQ4_NL).
+
+## [0.10.30] - 2026-09-07
+
+### Changed
+- Open WebUI model picker keeps only Hermes Agent routes; ChironAI proxy builds and raw Ollama tags are hidden.
+
+## [0.10.29] - 2026-09-05
+
+### Added
+- Open WebUI from iPhone when the PC is asleep: router door (WoL then redirect), NIC pattern-match wake, Chiron Chat shortcut recipe, and an iPhone PC recipe card.
+
+## [0.10.28] - 2026-09-03
+
+### Added
+- Windows sleep/display-off is now suppressed while the backend is running (`SetThreadExecutionState`); restored on shutdown.
+- Web search ranking drops shopping/wiki-spam hosts, boosts GitHub/HF/arXiv/Apple docs, and rewrites Flux/Hermes/Strix/Max+ queries so local SearxNG and the proxy web supplement share the same quality rules.
+
+## [0.10.27] - 2026-09-03
+
+### Added
+- Open WebUI chat streams show live `tok` and context-window percent on the status line (same figures as the RAG Fusion Proxy notification).
+
+## [0.10.26] - 2026-09-03
+
+### Added
+- CoreUI **iPhone PC** tab lists the phone-host scripts and lets you disable each one so Shortcuts/SSH will not run them.
+
+### Fixed
+- iPhone PC tab shows a retry banner and a restart hint when the phone-scripts API is missing from a stale backend process.
+
+## [0.10.25] - 2026-09-03
+
+### Added
+- Compact `GET /api/webui/host/phone-status` plus SSH scripts and a runbook so an iPhone Shortcut can wake the PC via the router, read whether ChironAI is generating, and sleep Windows without exposing the whole WebUI.
+
+## [0.10.24] - 2026-09-02
+
+### Added
+- Ollama tab shows the ollama.com plan and quota usage (session/weekly percent, per-model request counts, 4-week activity cost) in a new section above Pull model, using the stored Ollama Cloud API key; without a key it shows a not-configured hint.
+
+## [0.10.23] - 2026-09-01
+
+### Fixed
+- Open WebUI SSE no longer dies with `400 / 131072` on Hermes images: the container raises aiohttp's read buffer and stream chunk cap so a generated PNG can land in chat.
+
+## [0.10.22] - 2026-08-31
+
+### Fixed
+- LLM Proxy no longer chops the current assistant draft to 256 characters with an `upstream budget` marker, so Conduit/Hermes keep the live reply while generation continues.
+
+## [0.10.21] - 2026-08-31
+
+### Fixed
+- Waitress keeps answering `/v1/models` and health while long Hermes/GLM streams are in flight (32 worker threads instead of 8).
+
+## [0.10.20] - 2026-08-31
+
+### Changed
+- LLM Proxy vision fallback prefers `glm-5.3-flash:cloud` instead of `kimi-k2.6:cloud`.
+
+## [0.10.19] - 2026-08-31
+
+### Fixed
+- Hermes gateway survives ChironAI console/job teardown: Windows spawn uses `CREATE_BREAKAWAY_FROM_JOB`, and host exit no longer SIGKILLs in-flight Open WebUI SSE streams as a TransferEncodingError.
+
+## [0.10.18] - 2026-08-31
+
+### Added
+- RAG Fusion Proxy live notification shows context-window fill next to the token chip.
+- RAG Fusion Proxy live activity cards stay pinned at the bottom of the notification stack.
+- Performance → Details shows a Task Manager-style live view: system RAM, ChironAI host vs Docker graphs, GPU charts, and a process/container table.
+- Performance graphs can show 60 seconds, 10 minutes, or 1 hour, and host process rows include CPU percent plus a Python script/module label.
+- CoreUI header has a CPU pill and a Details capsule that opens Performance → Details.
+
+### Changed
+- Performance Details resource rail uses the same `--md-sys-color-surface` card background as the other cards instead of a gray container fill.
+
+## [0.10.17] - 2026-08-30
+
+### Added
+- Hermes tab shows whether the gateway and dashboard processes are alive or dead, plus working-set RAM for each tree and a total.
+- CoreUI header shows system RAM as used/total GB and ChironAI RAM (host process tree plus managed Docker containers).
+
+### Fixed
+- Hermes gateway and dashboard no longer open two empty Windows Terminal windows: spawn uses a hidden console (`CREATE_NO_WINDOW`) without `DETACHED_PROCESS`.
+- Qdrant no longer crash-loops on a read-only root filesystem: snapshots go to the RW storage volume, `/qdrant/snapshots` and `/tmp` are tmpfs, and DockerManager recreates the container when tmpfs mounts change.
+- Windows Docker CLI resolution prefers `docker.exe` over the extensionless Linux `docker` binary in Docker Desktop's `resources/bin`.
+- LLM Proxy build `num_ctx` is capped at the Extreme prefab (262144). Values like 1M made GLM cloud builds hang before the first token.
+- LLM Proxy no longer aborts a stream or injects an error while the model is still thinking. Long GLM reasoning can finish and then emit the answer.
+- Open WebUI and the Waitress backend keep long chat streams alive: aiohttp total timeout and idle channel timeout are 24h instead of 5 minutes / 2 minutes, so GLM thinking is not cut off as a TransferEncodingError. Open WebUI also gets `WEBUI_SECRET_KEY` in env so the read-only container can start.
+
+## [0.10.16] - 2026-08-30
+
+### Added
+- Hermes Agent bundled extension tab starts and stops the host gateway with the ChironAI backend (no Docker).
+- Hermes tab Open External starts the dashboard on port 9119 and opens it.
+- Hermes inspect no longer shells out to `hermes gateway status` / `--version`, so the tab does not time out and falsely show "not installed".
+- ChironAI starts Hermes with the existing host `HERMES_HOME` (the configured MEGA/LocalAppData home) instead of a blank profile.
+- Open WebUI keeps a second OpenAI connection to the host Hermes API so `Hermes Smart (Hard-worker-2)` and `Hermes Flash (Flash-worker)` appear in the model picker.
+
+## [0.10.15] - 2026-08-29
+
+### Changed
+- Docker Engine unavailable stays pinned at the bottom of the notification stack and is not dismissed by Clear.
+
+## [0.10.14] - 2026-08-29
+
+### Added
+- WebUI shows a single Docker Engine notification with a Start Docker action when Docker is not running.
+
+## [0.10.13] - 2026-08-29
+
+### Added
+- RAG Fusion Journal request detail now lists fetched web URLs at the bottom of each log.
+
 ## [0.10.12] - 2026-08-29
 
 ### Added

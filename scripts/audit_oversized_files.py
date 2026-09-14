@@ -30,6 +30,9 @@ EXCLUDE_DIR_NAMES = {
     "vendor",
     "backups",
     "logs",
+    "runtime",
+    "_tmp_switch",
+    "tmp",
     "extensions/bundled",
 }
 
@@ -54,6 +57,8 @@ DOCUMENTED_EXCEPTIONS: dict[str, str] = {
     "CoreModules/LlmProxy/llm_proxy/v1_responses.py": "OpenAI /v1/responses compat layer; vision mapping added in 0.8.9",
     "CoreModules/CoreUI/src/components/llmProxyBuildsTab/LlmProxyWizardSteps.jsx": "Build wizard steps; InfoButton hooks added in 0.8.10",
     "CoreModules/LlmProxy/llm_proxy/chat_completions_handler.py": "OpenAI chat completions handler; split deferred with provider paths",
+    "CoreModules/LlmProxy/llm_proxy/chat_completions_sse_generators.py": "SSE generators; Hermes/GLM keep-alive; split deferred",
+    "CoreModules/DockerManager/docker_manager/manager.py": "Docker runtime manager; tmpfs/CLI resolution; split deferred",
 }
 
 PRODUCTION_SUFFIXES = {".py", ".js", ".jsx", ".ts", ".tsx"}

@@ -112,6 +112,67 @@ function scrollNotificationListToLatest(scrollEl, behavior = 'auto') {
   scrollEl.scrollTo({ top, behavior });
 }
 
+function isStickyLiveEntry(entry) {
+  return Boolean(entry?.sticky);
+}
+
+function isPinnedLiveEntry(entry) {
+  return Boolean(entry?.sticky || entry?.pinToBottom);
+}
+
+function comparePinnedLiveEntries([, a], [, b]) {
+  const rank = (entry) => (entry?.sticky ? 0 : 1);
+  return rank(a) - rank(b);
+}
+
+function LiveNotificationCard({
+  id,
+  source,
+  node,
+  headerLeading,
+  title,
+  kind,
+  sticky,
+  isLeaving,
+  onLeaveEnd,
+  onClose,
+}) {
+  const cardKind = kind || 'live';
+  return (
+    <Card
+      className={`notification-center-card notification-center-card--${cardKind}${isLeaving ? ' notification-center-card--leaving' : ''}`}
+      elevation="var(--md-sys-elevation-level2)"
+      role="status"
+      onAnimationEnd={isLeaving ? () => onLeaveEnd(id) : undefined}
+    >
+      <div className="notification-center-card-header">
+        <span
+          className={`notification-center-card-header-title${
+            headerLeading ? ' notification-center-card-header-title--with-leading' : ''
+          }`}
+        >
+          {headerLeading}
+          <span className="notification-center-card-header-title-text">
+            {title || notificationModuleLabel(source)}
+          </span>
+        </span>
+        {sticky ? null : (
+          <button
+            type="button"
+            className="notification-center-card-close"
+            aria-label="Close notification"
+            onClick={() => onClose(id)}
+          >
+            ×
+          </button>
+        )}
+      </div>
+      <div className="notification-center-card-live-slot">{node}</div>
+      <ModuleFooter source={source} />
+    </Card>
+  );
+}
+
 function NotificationCenterShell({ onOpenRagRunDetails = null }) {
   const {
     sessionId,
@@ -171,8 +232,13 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
       .filter((id) => !liveActivities.has(id))
       .map((id) => [id, liveActivities.get(id) || { source: 'system', node: null, headerLeading: null }]),
   );
-  const hasVisibleCards = activePersisted.length > 0 || liveEntries.length > 0;
-  const visibleCardSignature = `${visiblePersisted.length}:${visibleLiveEntries.length}`;
+  const pinnedLiveEntries = visibleLiveEntries
+    .filter(([, entry]) => isPinnedLiveEntry(entry))
+    .sort(comparePinnedLiveEntries);
+  const scrollingLiveEntries = visibleLiveEntries.filter(([, entry]) => !isPinnedLiveEntry(entry));
+  const clearableLiveEntries = liveEntries.filter(([, entry]) => !isStickyLiveEntry(entry));
+  const hasClearableCards = activePersisted.length > 0 || clearableLiveEntries.length > 0;
+  const visibleCardSignature = `${visiblePersisted.length}:${scrollingLiveEntries.length}:${pinnedLiveEntries.length}`;
 
   const updateScrollState = useCallback(() => {
     const el = scrollRef.current;
@@ -244,7 +310,7 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
 
   const handleClearVisible = () => {
     const persistedIds = activePersisted.map((n) => n.id);
-    const liveIds = liveEntries.map(([id]) => id);
+    const liveIds = clearableLiveEntries.map(([id]) => id);
     setLeavingPersistedIds((prev) => {
       const next = new Set(prev);
       persistedIds.forEach((id) => next.add(id));
@@ -276,6 +342,7 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
       next.add(id);
       return next;
     });
+    suppressLiveActivity(id);
   };
 
   const finalizeLiveClose = (id) => {
@@ -450,51 +517,43 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
           );
         })}
 
-        {visibleLiveEntries.map(([id, { source, node, headerLeading }]) => {
-          const isLiveLeaving = leavingLiveIds.has(id);
-          return (
-          <Card
+        {scrollingLiveEntries.map(([id, entry]) => (
+          <LiveNotificationCard
             key={`l-${id}`}
-            className={`notification-center-card notification-center-card--live${isLiveLeaving ? ' notification-center-card--leaving' : ''}`}
-            elevation="var(--md-sys-elevation-level2)"
-            role="status"
-            onAnimationEnd={isLiveLeaving ? () => handleLiveLeaveEnd(id) : undefined}
-          >
-            <div className="notification-center-card-header">
-              <span
-                className={`notification-center-card-header-title${
-                  headerLeading ? ' notification-center-card-header-title--with-leading' : ''
-                }`}
-              >
-                {headerLeading}
-                <span className="notification-center-card-header-title-text">
-                  {notificationModuleLabel(source)}
-                </span>
-              </span>
-              <button
-                type="button"
-                className="notification-center-card-close"
-                aria-label="Close notification"
-                onClick={() => {
-                  setLeavingLiveIds((prev) => {
-                    if (prev.has(id)) return prev;
-                    const next = new Set(prev);
-                    next.add(id);
-                    return next;
-                  });
-                  suppressLiveActivity(id);
-                }}
-              >
-                ×
-              </button>
-            </div>
-            <div className="notification-center-card-live-slot">{node}</div>
-            <ModuleFooter source={source} />
-          </Card>
-          );
-        })}
+            id={id}
+            source={entry.source}
+            node={entry.node}
+            headerLeading={entry.headerLeading}
+            title={entry.title}
+            kind={entry.kind}
+            sticky={entry.sticky}
+            isLeaving={leavingLiveIds.has(id)}
+            onLeaveEnd={handleLiveLeaveEnd}
+            onClose={handleLiveClose}
+          />
+        ))}
         </div>
       </div>
+
+      {pinnedLiveEntries.length > 0 ? (
+        <div className="notification-center-sticky">
+          {pinnedLiveEntries.map(([id, entry]) => (
+            <LiveNotificationCard
+              key={`l-${id}`}
+              id={id}
+              source={entry.source}
+              node={entry.node}
+              headerLeading={entry.headerLeading}
+              title={entry.title}
+              kind={entry.kind}
+              sticky={entry.sticky}
+              isLeaving={leavingLiveIds.has(id)}
+              onLeaveEnd={handleLiveLeaveEnd}
+              onClose={handleLiveClose}
+            />
+          ))}
+        </div>
+      ) : null}
 
       <div className="notification-center-actions-row">
         {showLatestAction ? (
@@ -505,7 +564,7 @@ function NotificationCenterShell({ onOpenRagRunDetails = null }) {
             title="Scroll to latest notifications"
           />
         ) : null}
-        {hasVisibleCards ? (
+        {hasClearableCards ? (
           <CoreUINotificationActionButton
             icon="cleaning_services"
             label="Clear"

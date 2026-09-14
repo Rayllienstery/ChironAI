@@ -23,6 +23,16 @@ def register_performance_routes(bp: Blueprint) -> None:
         except Exception as e:
             return _error_response(e)
 
+    @bp.route("/performance/snapshot", methods=["GET"])
+    def get_performance_snapshot() -> Any:
+        """Return live RAM, GPU, host-process, and managed-container telemetry."""
+        try:
+            from application.host_memory import collect_performance_snapshot
+
+            return jsonify(collect_performance_snapshot())
+        except Exception as e:
+            return _error_response(e)
+
     @bp.route("/performance/browser-timing", methods=["POST"])
     def post_browser_timing() -> Any:
         """Accept browser Navigation Timing payload from the frontend.

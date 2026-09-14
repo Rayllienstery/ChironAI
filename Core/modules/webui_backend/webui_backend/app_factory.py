@@ -25,6 +25,7 @@ def create_production_app(
     This is the canonical factory used by ``start_webui.bat`` and ``python -m webui_backend.rag_proxy``.
     """
     from api.http.rag_routes import create_app
+    from application.windows_idle import register_rag_fusion_idle_pulses
     from webui_backend.paths import coreui_dir, webui_data_dir
     from webui_backend.static_routes import register_webui_static_routes
 
@@ -33,6 +34,7 @@ def create_production_app(
         webui_dir=base_dir,
         bootstrap_extensions=bootstrap_extensions,
     )
+    register_rag_fusion_idle_pulses(app)
     register_webui_static_routes(
         app,
         frontend_dir=frontend_dir or str(coreui_dir()),

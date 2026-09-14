@@ -204,3 +204,45 @@ Recovery:
 
 Generated artifacts such as `dist/`, coverage reports, and smoke logs should
 usually stay out of source changes.
+
+## iPhone wake / sleep / Chiron status
+
+Symptoms:
+
+- Shortcut SSH times out.
+- Wake-on-LAN does not power the PC.
+- Sleep is refused while a generation is running.
+- Open WebUI from the iPhone fails while the PC is asleep.
+
+Diagnostics and the one-time BIOS / OpenSSH / router checklist live in
+[`docs/PHONE_HOST.md`](PHONE_HOST.md). Scripts: `scripts/phone_host/`.
+Open WebUI from the phone: router door on `:9377` or the **Chiron Chat** shortcut
+(wake, wait, then `http://192.168.50.115:3000`). Prefer Sleep (S3), not Shutdown.
+
+Expected signals:
+
+- `powercfg /a` lists Standby (S3).
+- Ethernet **Wake on Magic Packet** is Enabled.
+- `phone-host.cmd status` prints `PC awake, Chiron idle` or `Generating...`.
+- `GET /api/webui/host/phone-status` from loopback returns JSON with
+  `generating` and `message`.
+
+## RustDesk LAN-only
+
+Symptoms:
+
+- RustDesk connects through a public relay instead of the Ethernet LAN.
+- Incoming sessions are reachable from outside `192.168.50.0/24`.
+
+Re-apply Direct IP + whitelist + LAN firewall:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\rustdesk\setup-lan-host.ps1
+```
+
+Expected signals:
+
+- Client connects to `192.168.50.115:21118`, not a public RustDesk ID.
+- Quality monitor shows a direct session (NVENC H.264, 60 fps).
+- Windows firewall inbound for RustDesk allows only `192.168.50.0/24`.
+

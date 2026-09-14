@@ -129,11 +129,11 @@ def test_resolved_ollama_chat_url_skips_non_ollama_without_url() -> None:
 def test_vision_fallback_preferences_order_and_dedupe(monkeypatch) -> None:
     from llm_proxy.chat_completions_handler import _vision_fallback_preferences
 
-    monkeypatch.setenv("LLM_PROXY_VISION_FALLBACK_MODEL", "kimi-k2.6:cloud")
+    monkeypatch.setenv("LLM_PROXY_VISION_FALLBACK_MODEL", "glm-5.3-flash:cloud")
 
     assert _vision_fallback_preferences({"vision_model": "minimax-m3:cloud"}) == (
         "minimax-m3:cloud",
-        "kimi-k2.6:cloud",
+        "glm-5.3-flash:cloud",
         "gemini-3-flash-preview:cloud",
     )
 

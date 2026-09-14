@@ -7,6 +7,10 @@ echo Working directory: %CD%
 
 set "PYTHONPATH=%CD%;%CD%\Core;%CD%\Core\modules\webui_backend;%PYTHONPATH%"
 
+if not defined HERMES_HOME (
+  if exist "%LOCALAPPDATA%\hermes\" set "HERMES_HOME=%LOCALAPPDATA%\hermes"
+)
+
 where python >nul 2>&1
 if errorlevel 1 (
   echo ERROR: python is not in PATH. Add Python to PATH or run from a dev environment.

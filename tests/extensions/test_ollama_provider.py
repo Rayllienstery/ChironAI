@@ -413,3 +413,87 @@ def test_ollama_docker_card_status_tile_docker_unavailable(monkeypatch: Any) -> 
     status_tile = next(m for m in card["meta"] if m["label"] == "Status")
     assert status_tile["value"]["label"] == "Docker unavailable"
     assert status_tile["value"]["tone"] == "error"
+
+
+# ---------------------------------------------------------------------------
+# cloud usage section tests
+# ---------------------------------------------------------------------------
+
+def _cloud_section_from_tab_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    sections = payload["schema"]["pages"][0]["sections"]
+    for section in sections:
+        if section.get("id") == "cloud_usage":
+            return section
+    raise AssertionError("cloud_usage section not found in tab payload")
+
+
+def test_ollama_tab_payload_cloud_usage_not_configured(monkeypatch: Any) -> None:
+    module = _load_ollama_provider_module()
+    monkeypatch.setattr(module, "invoke_ping", lambda **_: {"ok": True})
+    monkeypatch.setattr(module, "invoke_tags", lambda **_: {"models": []})
+
+    provider = _provider(None, repo=_Repo(), module=module)
+
+    payload = provider.get_tab_payload()
+    section = _cloud_section_from_tab_payload(payload)
+
+    assert len(section["components"]) == 1
+    assert section["components"][0]["key"] == "cloud_usage_status"
+    assert "Not configured" in section["components"][0]["value"]
+
+
+def test_ollama_tab_payload_cloud_usage_with_key(monkeypatch: Any) -> None:
+    module = _load_ollama_provider_module()
+    monkeypatch.setattr(module, "invoke_ping", lambda **_: {"ok": True})
+    monkeypatch.setattr(module, "invoke_tags", lambda **_: {"models": []})
+
+    repo = _Repo()
+    repo.set_app_setting("ollama_provider_ollama_api_key", "test-key")
+    monkeypatch.setattr(
+        module,
+        "fetch_cloud_usage",
+        lambda _repo: {
+            "configured": True,
+            "plan": "pro",
+            "session_usage": "8%",
+            "weekly_usage": "35%",
+            "activity_cost": "0.00000",
+            "session_models": "glm-5.3-flash: 133",
+            "weekly_models": "glm-5.3-flash: 2335",
+        },
+    )
+    provider = _provider(None, repo=repo, module=module)
+
+    payload = provider.get_tab_payload()
+    section = _cloud_section_from_tab_payload(payload)
+
+    by_key = {c["key"]: c for c in section["components"]}
+    assert by_key["cloud_usage_plan"]["value"] == "pro"
+    assert by_key["cloud_usage_session"]["value"] == "8%"
+    assert by_key["cloud_usage_weekly"]["value"] == "35%"
+    assert by_key["cloud_usage_cost"]["value"] == "0.00000"
+    assert by_key["cloud_usage_session_models"]["value"] == "glm-5.3-flash: 133"
+    assert by_key["cloud_usage_weekly_models"]["value"] == "glm-5.3-flash: 2335"
+    assert "cloud_usage_error" not in by_key
+
+
+def test_ollama_tab_payload_cloud_usage_error_does_not_break_payload(monkeypatch: Any) -> None:
+    module = _load_ollama_provider_module()
+    monkeypatch.setattr(module, "invoke_ping", lambda **_: {"ok": True})
+    monkeypatch.setattr(module, "invoke_tags", lambda **_: {"models": []})
+
+    repo = _Repo()
+    repo.set_app_setting("ollama_provider_ollama_api_key", "test-key")
+    monkeypatch.setattr(
+        module,
+        "fetch_cloud_usage",
+        lambda _repo: {"configured": True, "error": "Invalid or revoked API key"},
+    )
+    provider = _provider(None, repo=repo, module=module)
+
+    payload = provider.get_tab_payload()
+    section = _cloud_section_from_tab_payload(payload)
+
+    by_key = {c["key"]: c for c in section["components"]}
+    assert by_key["cloud_usage_error"]["value"] == "Invalid or revoked API key"
+    assert by_key["cloud_usage_plan"]["value"] == "—"

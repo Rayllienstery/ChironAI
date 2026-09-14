@@ -32,6 +32,11 @@ class ExtensionWorkerTimeout(TimeoutError):
 _HOST_CALL_TIMEOUTS: dict[tuple[str, str], float] = {
     ("docker_runtime", "inspect_container"): 1.5,
     ("docker_runtime", "check_image_update"): 5.0,
+    ("hermes_runtime", "inspect"): 8.0,
+    ("hermes_runtime", "ensure"): 45.0,
+    ("hermes_runtime", "ensure_dashboard"): 45.0,
+    ("hermes_runtime", "stop"): 20.0,
+    ("hermes_runtime", "update"): 120.0,
 }
 
 # Keep a bounded stderr ring so PIPE does not fill and deadlock the worker.
@@ -157,6 +162,7 @@ class ExtensionWorkerClient:
                 "project_root": str(self.project_root),
                 "chat_client_attrs": self._chat_client_attrs(),
                 "has_docker_runtime": getattr(self.host_context, "docker_runtime", None) is not None,
+                "has_hermes_runtime": getattr(self.host_context, "hermes_runtime", None) is not None,
                 "metadata_callables": self._metadata_callables(),
             },
             timeout_sec=max(8.0, self.timeout_sec),
@@ -620,6 +626,14 @@ class ExtensionWorkerClient:
 
                 args = [DockerContainerSpec(**args[0]), *args[1:]]
             return getattr(docker, method)(*args, **kwargs)
+        if target == "hermes_runtime":
+            hermes = getattr(self.host_context, "hermes_runtime", None)
+            if hermes is None:
+                raise RuntimeError("hermes_runtime is unavailable")
+            allowed = {"inspect", "ensure", "ensure_dashboard", "stop", "update"}
+            if method not in allowed:
+                raise AttributeError(f"hermes_runtime method not allowed: {method}")
+            return getattr(hermes, method)(*args, **kwargs)
         if target == "metadata":
             metadata = getattr(self.host_context, "metadata", {}) or {}
             fn = metadata.get(method) if isinstance(metadata, dict) else None

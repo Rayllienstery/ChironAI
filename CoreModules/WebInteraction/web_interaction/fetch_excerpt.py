@@ -12,7 +12,21 @@ MAX_BYTES = 512 * 1024
 TIMEOUT_S = 8.0
 MAX_EXCERPT_CHARS = 4000
 
-_ALLOWED_HOSTS = frozenset({"developer.apple.com", "swift.org"})
+_ALLOWED_HOSTS = frozenset(
+    {
+        "developer.apple.com",
+        "swift.org",
+        "github.com",
+        "raw.githubusercontent.com",
+        "huggingface.co",
+        "arxiv.org",
+        "docs.python.org",
+        "developer.mozilla.org",
+        "en.wikipedia.org",
+        "wikipedia.org",
+    }
+)
+_SKIP_HOSTS = frozenset({"youtube.com", "youtu.be", "m.youtube.com"})
 
 
 def fetch_page_env_enabled() -> bool:
@@ -33,8 +47,36 @@ def _host(url: str) -> str:
         return ""
 
 
+def github_to_raw(url: str) -> str:
+    """Map a GitHub blob/repo URL to raw.githubusercontent.com when possible."""
+    try:
+        p = urlparse((url or "").strip())
+    except Exception:
+        return url
+    host = (p.netloc or "").lower()
+    if host.startswith("www."):
+        host = host[4:]
+    if host != "github.com":
+        return url
+    parts = [x for x in (p.path or "").split("/") if x]
+    if len(parts) >= 5 and parts[2] == "blob":
+        owner, repo, ref = parts[0], parts[1], parts[3]
+        rest = "/".join(parts[4:])
+        return f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/{rest}"
+    if len(parts) >= 2 and parts[0] not in {"topics", "search", "orgs", "settings", "notifications"}:
+        owner, repo = parts[0], parts[1]
+        ref = "HEAD"
+        if len(parts) >= 4 and parts[2] == "tree":
+            ref = parts[3]
+        return f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/README.md"
+    return url
+
+
 def excerpt_url_allowed(url: str) -> bool:
-    return _host(url) in _ALLOWED_HOSTS
+    h = _host(url)
+    if h in _SKIP_HOSTS:
+        return False
+    return _host(github_to_raw(url)) in _ALLOWED_HOSTS
 
 
 def fetch_page_excerpt(url: str) -> tuple[str, str]:
@@ -44,13 +86,15 @@ def fetch_page_excerpt(url: str) -> tuple[str, str]:
     """
     if not fetch_page_env_enabled() or not (url or "").strip():
         return "", ""
+    url = github_to_raw(url)
     if not excerpt_url_allowed(url):
         return "", ""
     try:
-        import html2text
         import requests
     except ImportError:
         return "", ""
+
+    ctype = ""
 
     try:
         with requests.get(
@@ -60,6 +104,7 @@ def fetch_page_excerpt(url: str) -> tuple[str, str]:
             stream=True,
         ) as r:
             r.raise_for_status()
+            ctype = (r.headers.get("Content-Type") or "").lower()
             chunks = bytearray()
             for chunk in r.iter_content(65536):
                 if not chunk:
@@ -71,13 +116,18 @@ def fetch_page_excerpt(url: str) -> tuple[str, str]:
     except Exception:
         return "", ""
 
-    try:
-        h2t = html2text.HTML2Text()
-        h2t.ignore_links = True
-        h2t.ignore_images = True
-        text = h2t.handle(raw)
-    except Exception:
-        return "", ""
+    if "html" not in ctype and not raw.lstrip()[:15].lower().startswith("<!doctype") and "<html" not in raw[:400].lower():
+        text = raw
+    else:
+        try:
+            import html2text
+
+            h2t = html2text.HTML2Text()
+            h2t.ignore_links = True
+            h2t.ignore_images = True
+            text = h2t.handle(raw)
+        except Exception:
+            return "", ""
 
     text = " ".join(text.split())
     if len(text) > MAX_EXCERPT_CHARS:
@@ -89,7 +139,11 @@ def fetch_page_excerpt(url: str) -> tuple[str, str]:
 
 
 def excerpt_for_top_snippet(ranked: list[Snippet]) -> tuple[str, str]:
-    if not ranked:
-        return "", ""
-    u = (ranked[0].get("url") or "").strip()
-    return fetch_page_excerpt(u)
+    for item in ranked[:3]:
+        u = (item.get("url") or "").strip()
+        if not u or _host(u) in _SKIP_HOSTS:
+            continue
+        text, url = fetch_page_excerpt(u)
+        if text:
+            return text, url
+    return "", ""

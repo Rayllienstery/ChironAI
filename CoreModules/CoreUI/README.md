@@ -39,6 +39,7 @@ It is served by the backend but talks to product behavior only through HTTP.
 - Tokens live in `src/styles/tokens.css`.
 - Global system styles are imported from `src/main.jsx`.
 - Prefer existing CoreUI primitives and tokenized classes over one-off markup.
+- Primary cards use `--md-sys-color-surface`. A gray `surface-container*` fill on the outer card usually violates the design rules; nested capsules are a separate surface.
 - Use `CoreUIPillTabs` for primary tabs outside cards.
 - Use `CoreUISubtabs` for contained secondary navigation.
 

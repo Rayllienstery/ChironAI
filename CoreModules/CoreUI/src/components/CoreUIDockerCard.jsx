@@ -137,7 +137,8 @@ function ConfirmableAction({ action, idx, isLive, busy, activeAction, actionTime
  * @param {string} [props.busyActionId] - (Live mode) Currently busy action id.
  * @param {Object} [props.activeAction] - (Live mode) `{ id, label, startedAt }`.
  * @param {number} [props.actionTimerNow] - (Live mode) Timestamp ms for elapsed timer.
- * @param {string} [props.fieldKey='backend_url'] - (Live mode) Field key for the URL input.
+ * @param {string} [props.fieldKey='backend_url'] - (Live mode) Field key for the URL input. Empty string hides the field.
+ * @param {number} [props.metaColumns=3] - Metadata tile columns (2 or 3).
  */
 export default function CoreUIDockerCard({
   name = "Runtime",
@@ -159,6 +160,8 @@ export default function CoreUIDockerCard({
   activeAction,
   actionTimerNow,
   fieldKey = "backend_url",
+  metaColumns = 3,
+  showUrlField,
   ...rest
 }) {
   const { confirm, ConfirmDialogHost } = useConfirmDialog();
@@ -175,6 +178,12 @@ export default function CoreUIDockerCard({
   const liveMeta = isLive ? (Array.isArray(service?.meta) ? service.meta : []) : meta;
   const liveActions = isLive ? (Array.isArray(service?.actions) ? service.actions : []) : actions;
   const liveHttpStatus = isLive ? (service?.httpStatus || httpStatus) : httpStatus;
+  const liveMetaColumns = Number(isLive ? (service?.metaColumns ?? metaColumns) : metaColumns) === 2 ? 2 : 3;
+  const liveShowUrlField = showUrlField !== undefined
+    ? Boolean(showUrlField)
+    : isLive
+      ? Boolean(String(fieldKey || "").trim())
+      : true;
 
   const [localValue, setLocalValue] = useState(liveBackendUrl);
   useEffect(() => {
@@ -246,19 +255,21 @@ export default function CoreUIDockerCard({
 
       <div className="coreui-docker-card__body">
         <div className="coreui-docker-card__primary">
-          <label className="coreui-docker-card__field">
-            <span className="coreui-docker-card__field-label">{liveBackendUrlLabel}</span>
-            <input
-              type="text"
-              className="coreui-docker-card__input"
-              value={isLive ? localValue : (liveBackendUrl ?? "")}
-              placeholder={liveBackendUrlPlaceholder}
-              readOnly={!isLive}
-              onChange={handleBackendUrlChange}
-              onBlur={handleBackendUrlBlur}
-              aria-label={liveBackendUrlLabel}
-            />
-          </label>
+          {liveShowUrlField ? (
+            <label className="coreui-docker-card__field">
+              <span className="coreui-docker-card__field-label">{liveBackendUrlLabel}</span>
+              <input
+                type="text"
+                className="coreui-docker-card__input"
+                value={isLive ? localValue : (liveBackendUrl ?? "")}
+                placeholder={liveBackendUrlPlaceholder}
+                readOnly={!isLive}
+                onChange={handleBackendUrlChange}
+                onBlur={handleBackendUrlBlur}
+                aria-label={liveBackendUrlLabel}
+              />
+            </label>
+          ) : null}
 
           {liveActions.length ? (
             <div className="coreui-docker-card__actions">
@@ -285,7 +296,10 @@ export default function CoreUIDockerCard({
         </div>
 
         {liveMeta.length ? (
-          <div className="coreui-docker-card__meta-grid">
+          <div className={joinClasses([
+            "coreui-docker-card__meta-grid",
+            liveMetaColumns === 2 ? "coreui-docker-card__meta-grid--cols-2" : "",
+          ])}>
             {liveMeta.map((entry, idx) => (
               <div key={`${entry.label}-${idx}`} className="coreui-docker-card__meta-cell">
                 <span className="coreui-docker-card__meta-label">{entry.label}</span>

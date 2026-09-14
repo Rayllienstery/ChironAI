@@ -5,9 +5,9 @@ import CoreUIModal from "./CoreUIModal";
 import Card from "./Card";
 import { getStartupPerformance } from "../services/api";
 import { getModuleTimings, subscribeModuleTimings } from "../services/moduleTimings";
+import PerformanceDetailsSubtab from "./PerformanceDetailsSubtab";
+import { t } from "../services/i18n";
 import "../styles/components/PerformanceTab.css";
-
-const SUBTABS = [{ id: "startup", label: "Startup" }];
 
 const MODAL_TABS = [
   { id: "summary", label: "Summary" },
@@ -592,26 +592,31 @@ function StartupSubtab() {
  * performance samples captured via the Performance API.
  */
 export default function PerformanceTab() {
-  const [subTab, setSubTab] = useState("startup");
+  const [subTab, setSubTab] = useState("details");
+  const tabs = [
+    { id: "details", label: t("perf.details.tab") },
+    { id: "startup", label: "Startup" },
+  ];
 
   return (
     <div className="perf-tab tab-view">
       <div className="perf-tab__header">
         <div>
           <h2>Performance</h2>
-          <p>Runtime diagnostics and startup timing for every module.</p>
+          <p>Live RAM, GPU, and process telemetry, plus startup timing for every module.</p>
         </div>
       </div>
 
       <div className="coreui-mt-md coreui-mb-lg">
         <CoreUIPillTabs
-          tabs={SUBTABS}
+          tabs={tabs}
           value={subTab}
           onChange={setSubTab}
           ariaLabel="Performance sections"
         />
       </div>
 
+      {subTab === "details" && <PerformanceDetailsSubtab />}
       {subTab === "startup" && <StartupSubtab />}
     </div>
   );

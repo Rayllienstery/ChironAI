@@ -80,6 +80,20 @@ venv.bak/
 secrets.yaml
 config.local.yaml
 
+# Hermes Agent host home (never commit if dropped into this tree)
+**/gateway_state.json
+**/.hermes_history
+**/auth.json
+/MEMORY.md
+/USER.md
+**/.hermes/
+
+# Local agent dumps and host scratch (never commit)
+runtime/
+_tmp_switch/
+scripts/sunshine/apps.json
+scripts/phone_host/shortcut.json
+
 # Logs
 *.log
 logs/
@@ -180,3 +194,4 @@ prompts/*
 .tmp_openwebui_data/
 docs/REPO_TRACKED_AUDIT.md
 .opencode
+scripts/phone_host/enabled.json

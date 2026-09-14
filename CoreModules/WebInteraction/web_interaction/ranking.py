@@ -1,4 +1,4 @@
-"""Rank and filter DuckDuckGo snippets by domain heuristics."""
+"""Rank and filter web snippets by domain heuristics and query overlap."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ import os
 from urllib.parse import urlparse
 
 from web_interaction.search import Snippet
+from web_interaction.search_quality import rank_results
 
-# Higher score = better (we sort descending)
 _DEFAULT_PREFERRED = (
     "developer.apple.com",
     "swift.org",
@@ -24,15 +24,6 @@ def _preferred_domains() -> tuple[str, ...]:
     return _DEFAULT_PREFERRED
 
 
-_BLOCKLIST_SUBSTR = (
-    "pinterest.",
-    "quora.com",
-    "medium.com/m",
-    "linkedin.com/pulse",
-    "facebook.com",
-)
-
-
 def _host(url: str) -> str:
     try:
         p = urlparse((url or "").strip())
@@ -44,46 +35,17 @@ def _host(url: str) -> str:
         return ""
 
 
-def _domain_score(url: str) -> int:
-    h = _host(url)
-    u = (url or "").lower()
-    score = 0
-    for dom in _preferred_domains():
-        if dom in h or h.endswith(dom):
-            score += 10
-    if "documentation" in u and "apple.com" in h:
-        score += 5
-    if "github.com" in h:
-        score += 6
-    return score
-
-
-def _is_blocked(url: str) -> bool:
-    h = _host(url)
-    u = (url or "").lower()
-    return any(bad in h or bad in u for bad in _BLOCKLIST_SUBSTR)
-
-
-def rank_and_trim(snippets: list[Snippet], max_n: int) -> list[Snippet]:
+def rank_and_trim(snippets: list[Snippet], max_n: int, query: str = "") -> list[Snippet]:
     """
-    Drop blocklisted URLs, sort by domain preference and snippet length, keep max_n.
+    Drop junk hosts, boost docs/code sources, prefer query overlap, keep max_n.
     """
-    if not snippets or max_n <= 0:
-        return []
-    filtered: list[Snippet] = []
-    for s in snippets:
-        url = (s.get("url") or "").strip()
-        if url and _is_blocked(url):
-            continue
-        filtered.append(s)
-
-    def sort_key(s: Snippet) -> tuple[int, int]:
-        url = s.get("url") or ""
-        body = s.get("body") or ""
-        return (_domain_score(url), len(body))
-
-    filtered.sort(key=sort_key, reverse=True)
-    return filtered[:max_n]
+    ranked = rank_results(
+        list(snippets or []),
+        max_n,
+        query=query,
+        extra_boost_hosts=_preferred_domains(),
+    )
+    return ranked
 
 
 def top_domains(snippets: list[Snippet], k: int = 3) -> list[str]:

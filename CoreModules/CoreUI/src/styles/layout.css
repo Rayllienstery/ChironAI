@@ -163,6 +163,28 @@ html, body {
   opacity: 0.85;
 }
 
+button.metric-card {
+  margin: 0;
+  padding: 4px 12px;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+  cursor: pointer;
+  appearance: none;
+}
+
+.metric-card--action {
+  min-height: 28px;
+}
+
+.metric-card--action .metric-label {
+  color: var(--md-sys-color-on-surface);
+  font-weight: 650;
+  text-transform: none;
+  font-size: 12px;
+  letter-spacing: 0;
+}
+
 .metric-card-combined {
   display: inline-flex;
   align-items: center;

@@ -89,6 +89,32 @@ def test_wait_engine_starts_docker_desktop_on_windows() -> None:
     popen.assert_called_once()
 
 
+def test_start_engine_launches_docker_desktop_on_windows() -> None:
+    def fake_run(args: list[str], **_: object) -> CompletedProcess[str]:
+        if args[1:3] == ["version", "--format"]:
+            return _proc(args, code=1, err="engine not running")
+        if args[1:] == ["info"]:
+            return _proc(args, code=1, err="not ready")
+        if args[1:] == ["--version"]:
+            return _proc(args, out="Docker version 27.0.1")
+        raise AssertionError(args)
+
+    with (
+        patch("docker_manager.manager.subprocess.run", side_effect=fake_run),
+        patch("docker_manager.manager.subprocess.Popen") as popen,
+        patch("docker_manager.manager.sys.platform", "win32"),
+    ):
+        result = DockerManager(docker_exe="docker").start_engine(
+            docker_desktop_exe=r"C:\Docker\Docker Desktop.exe",
+            start_desktop_on_windows=True,
+        )
+
+    assert result["ok"] is True
+    assert result["engine_ready"] is False
+    assert result["started"] is True
+    popen.assert_called_once()
+
+
 def test_containers_parse_json_lines() -> None:
     line = json.dumps(
         {

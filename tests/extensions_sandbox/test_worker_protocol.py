@@ -79,12 +79,18 @@ def _write_extension(root: Path, *, provider_py: str) -> Path:
     return ext
 
 
-def _host(root: Path, repo: _Repo | None = None, docker_runtime: object | None = None) -> ProviderHostContext:
+def _host(
+    root: Path,
+    repo: _Repo | None = None,
+    docker_runtime: object | None = None,
+    hermes_runtime: object | None = None,
+) -> ProviderHostContext:
     return ProviderHostContext(
         project_root=Path(__file__).resolve().parents[2],
         get_settings_repository=lambda: repo or _Repo(),
         chat_client=_Chat(),
         docker_runtime=docker_runtime,
+        hermes_runtime=hermes_runtime,
     )
 
 
@@ -309,6 +315,58 @@ def test_sandboxed_extension_can_check_docker_image_updates(tmp_path: Path) -> N
         assert result["status"] == "up_to_date"
         assert result["current_version"] == "latest"
         assert docker.checked_image == "ollama/ollama:latest"
+    finally:
+        provider.close()
+
+
+HERMES_PROVIDER = """
+from llm_interactor.contracts import ProviderCapabilities, ProviderDescriptor, ProviderHealth
+
+class Provider:
+    def __init__(self, host_context, manifest):
+        self._host = host_context
+        self._manifest = manifest
+
+    def describe(self):
+        return ProviderDescriptor(
+            id="sandbox-hermes",
+            extension_id=self._manifest.id,
+            title="Sandbox Hermes",
+            capabilities=ProviderCapabilities(service_actions=True),
+        )
+
+    def list_models(self):
+        return []
+
+    def health_check(self):
+        return ProviderHealth(provider_id="sandbox-hermes", ok=True, status="ok")
+
+    def run_action(self, action_id, payload):
+        if action_id == "inspect":
+            return self._host.hermes_runtime.inspect()
+        return {"ok": True}
+
+def create_provider(host_context, manifest):
+    return Provider(host_context, manifest)
+"""
+
+
+class _Hermes:
+    def inspect(self) -> dict[str, str]:
+        return {"running": True, "message": "running", "health_url": "http://127.0.0.1:8642/health"}
+
+
+def test_sandboxed_extension_can_inspect_hermes_runtime(tmp_path: Path) -> None:
+    hermes = _Hermes()
+    ext = _write_extension(tmp_path, provider_py=HERMES_PROVIDER)
+    report = discover_extensions([ext], host_context=_host(tmp_path, hermes_runtime=hermes))
+
+    assert report.failed == []
+    provider = report.loaded[0].provider
+    try:
+        result = provider.run_action("inspect", {})
+        assert result["running"] is True
+        assert result["health_url"] == "http://127.0.0.1:8642/health"
     finally:
         provider.close()
 

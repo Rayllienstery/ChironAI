@@ -72,8 +72,9 @@ class _Docker:
         return dict(self.image_check)
 
 
-def _extension(repo: _Repo, docker: _Docker):
+def _extension(repo: _Repo, docker: _Docker, *, hermes: tuple[str, str] = ("", "")):
     mod = _load_open_webui_provider_module()
+    mod.OpenWebUiExtension._hermes_openai_for_container = lambda self: hermes
     host = SimpleNamespace(get_settings_repository=lambda: repo, docker_runtime=docker)
     manifest = SimpleNamespace(
         id="open-webui",
@@ -138,6 +139,7 @@ def test_open_webui_extension_descriptor_and_iframe_payload() -> None:
     assert "Port" in service_meta_labels
     assert "Backend source" in service_meta_labels
     assert "Chiron OpenAI URL" in service_meta_labels
+    assert "Hermes OpenAI URL" in service_meta_labels
     assert "Chiron API key" in service_meta_labels
     image_version_tile = next(m for m in service["meta"] if m["label"] == "Image version")
     assert image_version_tile["value"]["label"] == "not checked"
@@ -169,9 +171,15 @@ def test_open_webui_extension_actions_and_legacy_setting_migration() -> None:
     assert docker.ensure_spec.image == "ghcr.io/open-webui/open-webui:main"
     assert docker.ensure_spec.ports == ["3000:8080"]
     assert docker.ensure_spec.env["OLLAMA_BASE_URL"] == "http://localhost:9999"
+    assert docker.ensure_spec.env["ENABLE_OLLAMA_API"] == "False"
     assert docker.ensure_spec.env["ENABLE_OPENAI_API"] == "True"
-    assert docker.ensure_spec.env["OPENAI_API_BASE_URLS"] == "http://host.docker.internal:8080/v1"
-    assert docker.ensure_spec.env["OPENAI_API_KEYS"].startswith("chiron_sk_")
+    assert docker.ensure_spec.env["AIOHTTP_CLIENT_TIMEOUT"] == "86400"
+    assert docker.ensure_spec.env["AIOHTTP_READ_BUFSIZE"] == "8388608"
+    assert docker.ensure_spec.env["CHAT_STREAM_RESPONSE_CHUNK_MAX_BUFFER_SIZE"] == "20971520"
+    assert docker.ensure_spec.env["WEBUI_SECRET_KEY"]
+    openai_urls = docker.ensure_spec.env["OPENAI_API_BASE_URLS"].split(";")
+    assert openai_urls[0] == "http://host.docker.internal:8080/v1"
+    assert docker.ensure_spec.env["OPENAI_API_KEYS"].split(";")[0].startswith("chiron_sk_")
     assert docker.ensure_spec.volumes == ["open-webui:/app/backend/data"]
     assert docker.ensure_spec.restart == "unless-stopped"
     assert docker.ensure_spec.labels["chironai.extension"] == "open-webui"
@@ -191,8 +199,8 @@ def test_open_webui_extension_uses_existing_recoverable_chiron_key() -> None:
     started = ext.run_action("start", {})
 
     assert started["ok"] is True
-    assert docker.ensure_spec.env["OPENAI_API_KEYS"] == plaintext
-    assert docker.ensure_spec.env["OPENAI_API_BASE_URLS"] == "http://host.docker.internal:8080/v1"
+    assert docker.ensure_spec.env["OPENAI_API_KEYS"].split(";")[0] == plaintext
+    assert docker.ensure_spec.env["OPENAI_API_BASE_URLS"].split(";")[0] == "http://host.docker.internal:8080/v1"
 
 
 def test_open_webui_extension_reuses_existing_container_image_for_apply_config() -> None:
@@ -206,7 +214,7 @@ def test_open_webui_extension_reuses_existing_container_image_for_apply_config()
 
     assert applied["ok"] is True
     assert docker.ensure_spec.image == "open-webui/open-webui:main"
-    assert docker.ensure_spec.env["OPENAI_API_BASE_URLS"] == "http://host.docker.internal:8080/v1"
+    assert docker.ensure_spec.env["OPENAI_API_BASE_URLS"].split(";")[0] == "http://host.docker.internal:8080/v1"
     assert docker.ensure_spec.volumes == ["open-webui:/app/backend/data"]
 
 

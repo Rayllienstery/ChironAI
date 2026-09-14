@@ -50,21 +50,31 @@ if __name__ == "__main__":
     webui_url = f"http://127.0.0.1:{port}/webui"
     print(f"Starting backend on port {port}...", flush=True)
     print(f"WebUI: {webui_url}", flush=True)
+    try:
+        from application.hermes_runtime import bind_lifecycle_to_host
+
+        bind_lifecycle_to_host()
+    except Exception:
+        logging.getLogger("webui").warning("Hermes gateway was not bound to this host process", exc_info=True)
     open_browser_when_ready()
+
     try:
         import logging as _logging
 
         from waitress import serve as _waitress_serve
 
         # Waitress is a production-grade WSGI server — much faster than Werkzeug on Windows.
+        # Streaming chat holds a thread for the whole upstream wait. 8 workers is not
+        # enough once Hermes + CoreUI + Open WebUI poll at once: /v1/models then times out
+        # even though the listen socket is still open.
         _logging.getLogger("waitress").setLevel(_logging.WARNING)
         _waitress_serve(
             app,
             host=get_server_host(),
             port=port,
-            threads=8,
-            channel_timeout=120,
-            cleanup_interval=10,
+            threads=32,
+            channel_timeout=86400,
+            cleanup_interval=30,
         )
     except ImportError:
         app.run(host=get_server_host(), port=port, threaded=True)

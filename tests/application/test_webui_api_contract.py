@@ -102,6 +102,7 @@ def test_openapi_json_route_exposes_expected_document() -> None:
     assert "/api/webui/rag/status" in spec["paths"]
     assert "/api/webui/extensions/installed" in spec["paths"]
     assert "/api/webui/docker/status" in spec["paths"]
+    assert "/api/webui/docker/engine/start" in spec["paths"]
     assert "/v1/models" in spec["paths"]
     assert "/v1/chat/completions" in spec["paths"]
 

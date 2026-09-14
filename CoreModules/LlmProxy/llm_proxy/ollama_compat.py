@@ -16,6 +16,7 @@ from llm_proxy.openai_multipart_vision import (
     sanitize_proxy_content_parts,
 )
 from llm_proxy.openai_ollama_tool_bridge import (
+    fold_instruction_messages_for_ollama,
     ollama_chat_tool_choice_payload_value,
     ollama_message_to_openai_assistant,
     ollama_tools_from_openai,
@@ -42,6 +43,7 @@ __all__ = [
     "chat_error_suggests_no_think",
     "chat_error_suggests_no_tools",
     "find_cached_ollama_vision_model",
+    "fold_instruction_messages_for_ollama",
     "get_cached_ollama_capabilities",
     "is_gemini_family_model_name",
     "ollama_chat_tool_choice_payload_value",

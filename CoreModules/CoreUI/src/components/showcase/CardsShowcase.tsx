@@ -163,6 +163,41 @@ export default function CardsShowcase() {
         </ShowcaseItem>
 
         <ShowcaseItem
+          name="Docker card — two-column meta"
+          classes={[".coreui-docker-card", ".coreui-docker-card__meta-grid--cols-2", ".coreui-docker-card__actions"]}
+          source={`${sourceRoot}/components/CoreUIDockerCard.jsx, ${sourceRoot}/styles/components/CoreUIDockerCard.css`}
+          description="Host-managed runtime cards (Hermes) omit the chat backend URL field and use a two-column metadata grid. Gateway and dashboard tiles show process liveness plus working-set RAM. Open external launches the dashboard control panel."
+        >
+          <CoreUIDockerCard
+            name="Hermes"
+            description="Host-managed Hermes Agent gateway"
+            icon="smart_toy"
+            status={{ tone: "success", label: "running" }}
+            httpStatus="HTTP 200"
+            showUrlField={false}
+            metaColumns={2}
+            actions={[
+              { label: "Refresh", icon: "refresh" },
+              { label: "Update Hermes", icon: "system_update" },
+              { label: "Stop service", variant: "danger", icon: "stop_circle" },
+              { label: "Open external", icon: "open_in_new" },
+            ]}
+            meta={[
+              { label: "Binary", value: "hermes.exe" },
+              { label: "Status", value: { tone: "success", label: "running" } },
+              { label: "Gateway", value: { tone: "success", label: "alive · PID 32300 · 186 MB" } },
+              { label: "Dashboard", value: { tone: "success", label: "alive · PID 1384 · 41 MB" } },
+              { label: "RAM total", value: "227 MB" },
+              { label: "Health URL", value: "http://127.0.0.1:8642/health" },
+              { label: "Dashboard URL", value: "http://127.0.0.1:9119/" },
+              { label: "Version", value: "0.20.6" },
+              { label: "Login autostart", value: "disabled" },
+              { label: "Install", value: "https://hermes-agent.nousresearch.com/" },
+            ]}
+          />
+        </ShowcaseItem>
+
+        <ShowcaseItem
           name="Docker card — minimal state"
           classes={[".coreui-docker-card", ".coreui-docker-card__meta-value-empty"]}
           source={`${sourceRoot}/components/CoreUIDockerCard.jsx, ${sourceRoot}/styles/components/CoreUIDockerCard.css`}

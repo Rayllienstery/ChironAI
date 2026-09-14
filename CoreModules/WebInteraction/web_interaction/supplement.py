@@ -100,7 +100,7 @@ def build_web_supplement_bundle(
             if news_hits:
                 meta["ddg_news"] = True
             pool.extend(news_hits)
-        ranked = rank_and_trim(pool, n)
+        ranked = rank_and_trim(pool, n, query=user_message)
         cache_set(key, ranked, {"ddg_news": meta["ddg_news"]})
 
     meta["domains_top"] = top_domains(ranked, 5)

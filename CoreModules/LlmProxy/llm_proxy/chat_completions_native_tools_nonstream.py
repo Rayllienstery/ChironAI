@@ -22,6 +22,7 @@ from llm_proxy.chat_completions_ollama_proxy import (
     _apply_provider_trace_fields,
     _apply_response_diagnostics,
     _apply_trace_response_text_fields,
+    _drop_upstream_num_ctx_for_flash_smart,
     _output_budget_is_exhausted,
     _trace_ollama_api_metrics,
 )
@@ -40,6 +41,7 @@ from llm_proxy.contracts import LlmProxyWiring
 from llm_proxy.ollama_compat import (
     chat_error_suggests_no_think,
     chat_error_suggests_no_tools,
+    fold_instruction_messages_for_ollama,
     ollama_chat_tool_choice_payload_value,
     ollama_message_to_openai_assistant,
     openai_finish_reason_from_ollama,
@@ -75,9 +77,10 @@ def build_native_tools_ollama_body(
     options_overlay = ollama_options_overlay()
     if options_overlay:
         default_options.update(options_overlay)
+    _drop_upstream_num_ctx_for_flash_smart(default_options, requested_model=use_model)
     body: dict[str, object] = {
         "model": use_model,
-        "messages": native_ollama_messages_for_upstream,
+        "messages": fold_instruction_messages_for_ollama(list(native_ollama_messages_for_upstream)),
         "stream": False,
         "options": dict(default_options),
     }
@@ -129,7 +132,7 @@ def call_native_tools_buffered_chat_with_retries(
         return NativeToolsBufferedChatResult(data=data, error=None)
 
     msg_only = chat_client.chat(
-        native_ollama_messages,
+        fold_instruction_messages_for_ollama(list(native_ollama_messages)),
         use_model,
         stream=False,
         options=ollama_options_overlay(),
@@ -296,21 +299,6 @@ def try_build_native_tools_nonstream_response(
         content_parts,
         include_reasoning_content=ctx.include_reasoning_content,
     )
-    if (
-        content_parts["reasoning_content"]
-        and not content_parts["final_content"]
-        and not tool_calls_out
-    ):
-        _append_trace_warning(ctx.trace, "reasoning_only_response_guarded")
-        content_str = (
-            "[Error: model returned reasoning without final answer. "
-            "Try disabling thinking or shortening the prompt.]"
-        )
-        content_parts = {
-            "visible_content": f"{content_parts['visible_content']}\n\n{content_str}".strip(),
-            "reasoning_content": content_parts["reasoning_content"],
-            "final_content": content_str,
-        }
     budget_exhausted = _output_budget_is_exhausted(ctx.trace, data if isinstance(data, dict) else None)
     if budget_exhausted and not tool_calls_out:
         finish = "length"

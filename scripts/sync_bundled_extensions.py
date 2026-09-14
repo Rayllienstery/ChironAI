@@ -34,6 +34,11 @@ TARGETS = (
         repo_dir="chironai-extension-codex-launcher",
         bundled_dir="codex-launcher",
     ),
+    ExtensionSyncTarget(
+        extension_id="hermes-agent",
+        repo_dir="chironai-extension-hermes-agent",
+        bundled_dir="hermes-agent",
+    ),
 )
 
 

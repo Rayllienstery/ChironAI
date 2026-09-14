@@ -153,11 +153,12 @@ def docker_stop_container(name: str) -> tuple[bool, str]:
 
 
 def ensure_qdrant_container(cfg: RagRuntimeConfig) -> tuple[bool, str]:
-    # Hardening: Qdrant writes persistent data only to the named volume mounted
-    # at /qdrant/storage. Keep root (official image default) but restrict the
+    # Hardening: Qdrant writes persistent data to the named volume at
+    # /qdrant/storage. Keep root (official image default) but restrict the
     # runtime surface: read-only root FS, drop all capabilities, no new
-    # privileges, and a writable tmpfs for temporary files.
-    # The /tmp path is a container-local tmpfs mount, not a host temp dir.
+    # privileges. Qdrant also creates ./snapshots/tmp at HTTP startup; put
+    # snapshots on the RW storage volume and keep a container-local tmpfs
+    # for /tmp and the default snapshots path as a fallback.
     spec = DockerContainerSpec(
         name=cfg.qdrant_container_name,
         image=cfg.qdrant_image,
@@ -165,6 +166,7 @@ def ensure_qdrant_container(cfg: RagRuntimeConfig) -> tuple[bool, str]:
             f"{cfg.qdrant_host_http_port}:6333",
             f"{cfg.qdrant_host_grpc_port}:6334",
         ],
+        env={"QDRANT__STORAGE__SNAPSHOTS_PATH": "/qdrant/storage/snapshots"},
         volumes=["qdrant_storage:/qdrant/storage"],
         restart="unless-stopped",
         labels={"chironai.service": "qdrant"},
@@ -172,7 +174,7 @@ def ensure_qdrant_container(cfg: RagRuntimeConfig) -> tuple[bool, str]:
         read_only_root_fs=True,
         cap_drop=["ALL"],
         no_new_privileges=True,
-        tmpfs=["/tmp"],  # nosec B108
+        tmpfs=["/tmp", "/qdrant/snapshots"],  # nosec B108
     )
     result = _docker_manager().ensure_container(spec)
     return bool(result.get("ok")), str(result.get("message") or result.get("details") or result.get("error") or "")

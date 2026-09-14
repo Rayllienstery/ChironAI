@@ -14,6 +14,7 @@ from typing import Any, Literal, TypedDict
 
 # Must stay in sync with CoreUI ``API_BASE`` and Flask ``Blueprint(..., url_prefix=...)``.
 WEBUI_URL_PREFIX: str = "/api/webui"
+PHONE_STATUS_TOKEN_HEADER: str = "X-Chiron-Phone-Token"
 
 
 class WebUiErrorResponse(TypedDict):
@@ -76,6 +77,62 @@ class HelpSearchResult(TypedDict):
     title: str
     tags: list[str]
     snippet: str
+
+
+class DockerStatusResponse(TypedDict, total=False):
+    """GET /docker/status — Docker CLI and engine diagnostics."""
+
+    ok: bool
+    cli_available: bool
+    engine_ready: bool
+    docker_exe: str
+    cli_version: str
+    server_version: str
+    error: str
+
+
+class DashboardMetricsRam(TypedDict, total=False):
+    """RAM slice of GET /dashboard-metrics."""
+
+    system_used_bytes: int
+    system_total_bytes: int
+    system_used_gb: float
+    system_total_gb: float
+    app_host_bytes: int
+    app_containers_bytes: int
+    app_bytes: int
+    app_gb: float
+
+
+class DashboardMetricsCpu(TypedDict, total=False):
+    """CPU slice of GET /dashboard-metrics."""
+
+    utilization_pct: float | None
+
+
+class DashboardMetricsResponse(TypedDict, total=False):
+    """GET /dashboard-metrics — header GPU/RAM/CPU telemetry and service snippets."""
+
+    rag: dict[str, Any]
+    ollama: dict[str, Any]
+    gpu: dict[str, Any] | None
+    ram: DashboardMetricsRam | None
+    cpu: DashboardMetricsCpu | None
+    proxy_status: str
+    latest_request_seconds: float | None
+    latest_request_total_tokens: int | None
+    latest_request_rag_steps: dict[str, Any] | None
+
+
+class DockerEngineStartResponse(TypedDict, total=False):
+    """POST /docker/engine/start — launch Docker Desktop without blocking."""
+
+    ok: bool
+    engine_ready: bool
+    started: bool
+    message: str
+    error: str
+    status: DockerStatusResponse
 
 
 class HelpSearchResponse(TypedDict, total=False):
@@ -385,6 +442,112 @@ class StartupPerformanceResponse(TypedDict, total=False):
     browser_timing: dict[str, Any]
 
 
+class PerformanceProcessRow(TypedDict, total=False):
+    """One host process, Hermes tree, or managed Docker container."""
+
+    id: str
+    kind: str
+    name: str
+    pid: int | None
+    rss_bytes: int
+    rss: str
+    limit_bytes: int | None
+    cpu_pct: float | None
+    detail: str
+
+
+class PerformanceMemorySlice(TypedDict, total=False):
+    """System RAM slice of GET /performance/snapshot."""
+
+    used_bytes: int
+    total_bytes: int
+    available_bytes: int
+    used_gb: float
+    total_gb: float
+    available_gb: float
+    used_pct: float
+    committed_bytes: int
+    committed_total_bytes: int
+    committed_gb: float
+    committed_total_gb: float
+    cached_bytes: int
+    cached_gb: float
+
+
+class PerformanceAppSlice(TypedDict, total=False):
+    """ChironAI host + container RAM slice of GET /performance/snapshot."""
+
+    host_bytes: int
+    containers_bytes: int
+    bytes: int
+    host_gb: float
+    containers_gb: float
+    gb: float
+    host_mb: float
+    containers_mb: float
+
+
+class PerformanceGpuSlice(TypedDict, total=False):
+    """GPU slice of GET /performance/snapshot."""
+
+    name: str
+    driver_version: str
+    utilization_pct: int | None
+    memory_used_mb: int | None
+    memory_total_mb: int | None
+    temperature_c: int | None
+
+
+class PerformanceSnapshotResponse(TypedDict, total=False):
+    """GET /api/webui/performance/snapshot — live Task Manager-style telemetry."""
+
+    captured_at_ms: int
+    memory: PerformanceMemorySlice
+    app: PerformanceAppSlice
+    gpu: PerformanceGpuSlice | None
+    processes: list[PerformanceProcessRow]
+
+
+class PhoneHostStatusResponse(TypedDict, total=False):
+    """GET /api/webui/host/phone-status — compact Shortcut payload."""
+
+    host: Literal["awake"]
+    chiron: Literal["up"]
+    generating: bool
+    kind: Literal["llm", "gpu"] | None
+    detail: str | None
+    gpu_pct: int | None
+    active_traces: int
+    status: str
+    message: str
+
+
+class PhoneHostScriptDTO(TypedDict, total=False):
+    """One row in GET /host/phone-scripts."""
+
+    id: str
+    file: str
+    wrapper: str | None
+    path: str
+    title: str
+    description: str
+    enabled: bool
+    exists: bool
+    wrapper_exists: bool
+
+
+class PhoneHostScriptsResponse(TypedDict, total=False):
+    """GET /api/webui/host/phone-scripts and PUT /host/phone-scripts/{id}."""
+
+    scripts: list[PhoneHostScriptDTO]
+
+
+class PhoneHostScriptEnabledBody(TypedDict):
+    """PUT /api/webui/host/phone-scripts/{script_id} request."""
+
+    enabled: bool
+
+
 class DependencySourceDTO(TypedDict, total=False):
     path: str
     group: str
@@ -564,6 +727,16 @@ __all__ = [
     "StartupStep",
     "StartupPhase",
     "StartupPerformanceResponse",
+    "PerformanceProcessRow",
+    "PerformanceMemorySlice",
+    "PerformanceAppSlice",
+    "PerformanceGpuSlice",
+    "PerformanceSnapshotResponse",
+    "PhoneHostStatusResponse",
+    "PhoneHostScriptDTO",
+    "PhoneHostScriptsResponse",
+    "PhoneHostScriptEnabledBody",
+    "PHONE_STATUS_TOKEN_HEADER",
     "DependencySourceDTO",
     "DependencyDTO",
     "DependencyCountsDTO",
@@ -578,5 +751,10 @@ __all__ = [
     "HelpListResponse",
     "HelpSearchResponse",
     "HelpSearchResult",
+    "DockerStatusResponse",
+    "DockerEngineStartResponse",
+    "DashboardMetricsRam",
+    "DashboardMetricsCpu",
+    "DashboardMetricsResponse",
     "webui_abs_path",
 ]

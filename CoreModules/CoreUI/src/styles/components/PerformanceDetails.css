@@ -1,0 +1,322 @@
+/* Performance → Details: Windows 11 Task Manager-style resource view */
+
+.perf-tm-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-sys-spacing-md, 16px);
+  min-height: 0;
+}
+
+.perf-tm__toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.perf-tm {
+  --perf-tm-accent: #0078d4;
+  display: grid;
+  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+  gap: var(--md-sys-spacing-md, 16px);
+  min-height: 560px;
+  align-items: stretch;
+}
+
+.perf-tm[data-resource="memory"] {
+  --perf-tm-accent: #0078d4;
+}
+
+.perf-tm[data-resource="app"] {
+  --perf-tm-accent: #0f9d9a;
+}
+
+.perf-tm[data-resource="gpu"] {
+  --perf-tm-accent: #8e6cff;
+}
+
+.perf-tm__rail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border-radius: var(--md-sys-shape-corner-large, 16px);
+  background: var(--md-sys-color-surface);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  min-height: 0;
+}
+
+.perf-tm__rail-item {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  border: 0;
+  border-left: 3px solid transparent;
+  border-radius: var(--md-sys-shape-corner-medium, 12px);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.perf-tm__spark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 76px;
+  height: 32px;
+  padding: 1px;
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-on-surface) 42%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, var(--md-sys-color-surface));
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.perf-tm__rail-item.is-selected .perf-tm__spark {
+  border-color: var(--perf-tm-accent);
+}
+
+.perf-tm__spark .sparkline,
+.perf-tm__spark .sparkline-empty {
+  display: block;
+}
+
+.perf-tm__rail-item:hover {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent);
+}
+
+.perf-tm__rail-item.is-selected {
+  background: color-mix(in srgb, var(--perf-tm-accent) 12%, var(--md-sys-color-surface));
+  border-left-color: var(--perf-tm-accent);
+}
+
+.perf-tm__rail-item:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+
+.perf-tm__rail-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.perf-tm__rail-label {
+  font: var(--md-sys-typescale-label-large-font, 13px/18px system-ui);
+  font-weight: 650;
+  color: var(--md-sys-color-on-surface);
+}
+
+.perf-tm__rail-value {
+  font: var(--md-sys-typescale-body-small-font, 12px/16px system-ui);
+  color: var(--md-sys-color-on-surface-variant);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.perf-tm__main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--md-sys-spacing-md, 16px);
+  padding: 16px 20px 20px;
+  border-radius: var(--md-sys-shape-corner-large, 16px);
+  background: var(--md-sys-color-surface);
+  border: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.perf-tm__heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.perf-tm__heading h3 {
+  margin: 0;
+  font: var(--md-sys-typescale-headline-small-font);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--md-sys-color-on-surface);
+}
+
+.perf-tm__heading span {
+  font: var(--md-sys-typescale-body-medium-font);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.perf-tm__charts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.perf-tm__charts--gpu .perf-tm__chart-block:first-child {
+  grid-column: 1 / -1;
+}
+
+.perf-tm__chart-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.perf-tm__chart-label {
+  font: var(--md-sys-typescale-label-medium-font, 12px/16px system-ui);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.perf-tm__chart-window {
+  font: var(--md-sys-typescale-label-small-font, 11px/14px system-ui);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.perf-tm-chart {
+  display: block;
+  width: 100%;
+  height: 168px;
+  box-sizing: border-box;
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-on-surface) 42%, transparent);
+  border-radius: 2px;
+  background: var(--md-sys-color-surface);
+}
+
+.perf-tm-chart__bg {
+  fill: color-mix(in srgb, var(--md-sys-color-on-surface) 6%, var(--md-sys-color-surface));
+}
+
+.perf-tm-chart__grid {
+  stroke: color-mix(in srgb, var(--md-sys-color-on-surface) 14%, transparent);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.perf-tm-chart__area {
+  opacity: 0.28;
+}
+
+.perf-tm-chart__line {
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.perf-tm__stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px 24px;
+}
+
+.perf-tm__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.perf-tm__stat-label {
+  font: var(--md-sys-typescale-label-medium-font, 12px/16px system-ui);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.perf-tm__stat-value {
+  font: var(--md-sys-typescale-title-medium-font, 16px/24px system-ui);
+  font-weight: 650;
+  color: var(--md-sys-color-on-surface);
+}
+
+.perf-tm__table-wrap {
+  min-width: 0;
+}
+
+.perf-tm__table-title {
+  margin-bottom: 8px;
+  font: var(--md-sys-typescale-title-small-font, 14px/20px system-ui);
+  font-weight: 650;
+  color: var(--md-sys-color-on-surface);
+}
+
+.perf-tm__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.perf-tm__table th,
+.perf-tm__table td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  font: var(--md-sys-typescale-body-small-font, 12px/16px system-ui);
+  vertical-align: top;
+}
+
+.perf-tm__table th {
+  color: var(--md-sys-color-on-surface-variant);
+  font-weight: 600;
+}
+
+.perf-tm__table td strong {
+  display: block;
+  color: var(--md-sys-color-on-surface);
+}
+
+.perf-tm__table td span {
+  display: block;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.perf-tm__table td:nth-child(3),
+.perf-tm__table td:nth-child(4),
+.perf-tm__table td:nth-child(5),
+.perf-tm__table th:nth-child(3),
+.perf-tm__table th:nth-child(4),
+.perf-tm__table th:nth-child(5) {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.perf-tm__empty,
+.perf-tm__error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-body-medium-font);
+}
+
+.perf-tm__error {
+  color: var(--md-sys-color-error);
+}
+
+.coreui-showcase-perf-tm {
+  min-height: 0;
+}
+
+.coreui-showcase-perf-tm .perf-tm-chart {
+  height: 96px;
+}
+
+@media (max-width: 960px) {
+  .perf-tm {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+
+  .perf-tm__charts {
+    grid-template-columns: 1fr;
+  }
+
+  .perf-tm__rail {
+    flex-direction: row;
+    overflow-x: auto;
+  }
+
+  .perf-tm__rail-item {
+    min-width: 220px;
+  }
+}

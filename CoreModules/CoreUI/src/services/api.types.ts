@@ -29,6 +29,30 @@ interface components {
       source?: string;
       title?: string;
     };
+    DashboardMetricsCpu: {
+      utilization_pct?: number | null;
+    };
+    DashboardMetricsRam: {
+      app_bytes?: number;
+      app_containers_bytes?: number;
+      app_gb?: number;
+      app_host_bytes?: number;
+      system_total_bytes?: number;
+      system_total_gb?: number;
+      system_used_bytes?: number;
+      system_used_gb?: number;
+    };
+    DashboardMetricsResponse: {
+      cpu?: components["schemas"]["DashboardMetricsCpu"];
+      gpu?: Record<string, unknown> | null;
+      latest_request_rag_steps?: Record<string, unknown> | null;
+      latest_request_seconds?: number | null;
+      latest_request_total_tokens?: number | null;
+      ollama?: Record<string, unknown>;
+      proxy_status?: string;
+      rag?: Record<string, unknown>;
+      ram?: components["schemas"]["DashboardMetricsRam"];
+    };
     DependenciesResponse: {
       counts?: Record<string, number>;
       dependencies?: components["schemas"]["Dependency"][];
@@ -55,6 +79,15 @@ interface components {
       path?: string;
       requested?: string;
     };
+    DockerEngineStartResponse: {
+      engine_ready?: boolean;
+      error?: string;
+      message?: string;
+      ok?: boolean;
+      started?: boolean;
+      status?: components["schemas"]["DockerStatusResponse"];
+      [key: string]: unknown;
+    };
     DockerListResponse: {
       containers?: Record<string, unknown>[];
       details?: string;
@@ -66,7 +99,9 @@ interface components {
     };
     DockerStatusResponse: {
       available?: boolean;
+      cli_available?: boolean;
       details?: string;
+      engine_ready?: boolean;
       error?: string;
       ok?: boolean;
       running?: boolean;
@@ -248,6 +283,85 @@ interface components {
       supports_tools?: boolean;
       supports_vision?: boolean;
       [key: string]: unknown;
+    };
+    PerformanceAppSlice: {
+      bytes?: number;
+      containers_bytes?: number;
+      containers_gb?: number;
+      containers_mb?: number;
+      gb?: number;
+      host_bytes?: number;
+      host_gb?: number;
+      host_mb?: number;
+    };
+    PerformanceGpuSlice: {
+      driver_version?: string;
+      memory_total_mb?: number | null;
+      memory_used_mb?: number | null;
+      name?: string;
+      temperature_c?: number | null;
+      utilization_pct?: number | null;
+    };
+    PerformanceMemorySlice: {
+      available_bytes?: number;
+      available_gb?: number;
+      cached_bytes?: number;
+      cached_gb?: number;
+      committed_bytes?: number;
+      committed_gb?: number;
+      committed_total_bytes?: number;
+      committed_total_gb?: number;
+      total_bytes?: number;
+      total_gb?: number;
+      used_bytes?: number;
+      used_gb?: number;
+      used_pct?: number;
+    };
+    PerformanceProcessRow: {
+      cpu_pct?: number | null;
+      detail?: string;
+      id?: string;
+      kind?: string;
+      limit_bytes?: number | null;
+      name?: string;
+      pid?: number | null;
+      rss?: string;
+      rss_bytes?: number;
+    };
+    PerformanceSnapshotResponse: {
+      app?: components["schemas"]["PerformanceAppSlice"];
+      captured_at_ms?: number;
+      gpu?: components["schemas"]["PerformanceGpuSlice"];
+      memory?: components["schemas"]["PerformanceMemorySlice"];
+      processes?: components["schemas"]["PerformanceProcessRow"][];
+    };
+    PhoneHostScript: {
+      description?: string;
+      enabled?: boolean;
+      exists?: boolean;
+      file?: string;
+      id?: string;
+      path?: string;
+      title?: string;
+      wrapper?: string | null;
+      wrapper_exists?: boolean;
+    };
+    PhoneHostScriptEnabledBody: {
+      enabled: boolean;
+    };
+    PhoneHostScriptsResponse: {
+      scripts?: components["schemas"]["PhoneHostScript"][];
+    };
+    PhoneHostStatusResponse: {
+      active_traces?: number;
+      chiron?: "up";
+      detail?: string | null;
+      generating?: boolean;
+      gpu_pct?: number | null;
+      host?: "awake";
+      kind?: "llm" | "gpu";
+      message?: string;
+      status?: string;
     };
     ProviderModelEntry: {
       description?: string;
@@ -610,7 +724,7 @@ export interface paths {
       parameters: never;
       requestBody: never;
       responses: {
-        "200": components["schemas"]["GenericObject"];
+        "200": components["schemas"]["DashboardMetricsResponse"];
       };
     };
   };
@@ -698,6 +812,16 @@ export interface paths {
       requestBody: components["schemas"]["GenericObject"];
       responses: {
         "200": components["schemas"]["GenericObject"];
+        "400": components["schemas"]["ErrorResponse"];
+      };
+    };
+  };
+  "/api/webui/docker/engine/start": {
+    post: {
+      parameters: never;
+      requestBody: components["schemas"]["GenericObject"];
+      responses: {
+        "200": components["schemas"]["DockerEngineStartResponse"];
         "400": components["schemas"]["ErrorResponse"];
       };
     };
@@ -999,6 +1123,38 @@ export interface paths {
       };
     };
   };
+  "/api/webui/host/phone-scripts": {
+    get: {
+      parameters: never;
+      requestBody: never;
+      responses: {
+        "200": components["schemas"]["PhoneHostScriptsResponse"];
+      };
+    };
+  };
+  "/api/webui/host/phone-scripts/{script_id}": {
+    put: {
+      parameters: {
+        path: {
+          script_id: string;
+        };
+      };
+      requestBody: components["schemas"]["PhoneHostScriptEnabledBody"];
+      responses: {
+        "200": components["schemas"]["PhoneHostScriptsResponse"];
+        "400": components["schemas"]["ErrorResponse"];
+      };
+    };
+  };
+  "/api/webui/host/phone-status": {
+    get: {
+      parameters: never;
+      requestBody: never;
+      responses: {
+        "200": components["schemas"]["PhoneHostStatusResponse"];
+      };
+    };
+  };
   "/api/webui/llm-proxy/api-key": {
     delete: {
       parameters: never;
@@ -1219,6 +1375,15 @@ export interface paths {
       responses: {
         "200": components["schemas"]["GenericObject"];
         "400": components["schemas"]["ErrorResponse"];
+      };
+    };
+  };
+  "/api/webui/performance/snapshot": {
+    get: {
+      parameters: never;
+      requestBody: never;
+      responses: {
+        "200": components["schemas"]["PerformanceSnapshotResponse"];
       };
     };
   };

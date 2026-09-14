@@ -48,9 +48,17 @@ export function NotificationCenterProvider({ sessionId, children }) {
   const setLiveActivity = useCallback((id, source, node, options) => {
     if (id == null || id === '') return;
     const headerLeading = options && options.headerLeading != null ? options.headerLeading : null;
+    const title = options && typeof options.title === 'string' && options.title.trim()
+      ? options.title.trim()
+      : null;
+    const kind = options && typeof options.kind === 'string' && options.kind.trim()
+      ? options.kind.trim()
+      : null;
+    const sticky = Boolean(options && options.sticky);
+    const pinToBottom = Boolean(options && options.pinToBottom);
     setLiveMap((prev) => {
       const next = new Map(prev);
-      next.set(String(id), { source, node, headerLeading });
+      next.set(String(id), { source, node, headerLeading, title, kind, sticky, pinToBottom });
       return next;
     });
   }, []);

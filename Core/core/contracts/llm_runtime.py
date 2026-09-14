@@ -148,6 +148,7 @@ class ProviderHostContext:
     get_settings_repository: Callable[[], Any]
     chat_client: Any | None = None
     docker_runtime: Any | None = None
+    hermes_runtime: Any | None = None
     metadata: dict[str, Any] = field(default_factory=_any_dict)
 
 

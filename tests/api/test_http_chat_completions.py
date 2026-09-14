@@ -4176,7 +4176,7 @@ def test_chat_completions_stream_uses_ollama_provider_runtime(
     assert int(token_estimates.get("completion_tokens_estimated") or 0) >= 1
 
 
-def test_stream_reasoning_only_guard_stops_visible_repeat(
+def test_stream_reasoning_only_guard_does_not_abort_thinking(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import api.http.rag_routes as rag_routes
@@ -4188,6 +4188,7 @@ def test_stream_reasoning_only_guard_stops_visible_repeat(
             yield ("thinking_delta", "x" * 300)
             yield ("thinking_delta", "y" * 300)
             yield ("thinking_delta", "z" * 300)
+            yield ("content_delta", "final answer")
             yield ("done", {"done_reason": "stop", "eval_count": 900, "prompt_eval_count": 4})
 
         def chat(self, *_a: Any, **_k: Any) -> str:
@@ -4239,11 +4240,12 @@ def test_stream_reasoning_only_guard_stops_visible_repeat(
     assert r.status_code == 200
     body = r.get_data(as_text=True)
     assert "reasoning_content" in body
-    assert "reasoning-only response guard triggered" in body
+    assert "reasoning-only response guard triggered" not in body
+    assert "final answer" in body
     assert '"content": "' + ("x" * 20) not in body
     trace = (client.get("/api/webui/proxy-trace/current").get_json() or {}).get("trace") or {}
-    assert "reasoning_only_guard_triggered" in (trace.get("warnings") or [])
-    assert (trace.get("response") or {}).get("reasoning_only_guard_triggered") is True
+    assert "reasoning_only_guard_triggered" not in (trace.get("warnings") or [])
+    assert (trace.get("response") or {}).get("reasoning_only_guard_triggered") is not True
 
 
 def test_non_stream_logs_store_only_previews_for_reasoning_and_final_content(
@@ -4690,11 +4692,11 @@ def test_model_build_num_predict_forwards_to_ollama_options(
 
     assert r.status_code == 200
     assert captured_payload.get("options", {}).get("num_predict") == 65536
-    assert captured_payload.get("think") is False
+    assert "think" not in captured_payload
 
     trace = (app.test_client().get("/api/webui/proxy-trace/current").get_json() or {}).get("trace") or {}
     assert (trace.get("request") or {}).get("effective_num_predict") == 65536
-    assert (trace.get("request") or {}).get("ollama_think") is False
+    assert (trace.get("request") or {}).get("ollama_think") is None
 
 
 def test_request_max_tokens_overrides_build_num_predict_and_warns_when_exhausted(

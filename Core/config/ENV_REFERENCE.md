@@ -12,6 +12,8 @@ LLM Proxy builds, see [`CONFIG_AUTHORITY.md`](CONFIG_AUTHORITY.md).
 | `SERVER_HOST` | Bind address | `server.yaml` → `server.host` |
 | `WEBUI_PORT` | Legacy standalone WebUI port helper | `server.yaml` → `webui.port` |
 | `LOG_LEVEL` | Python logging level name | `server.yaml` → `logging.level` |
+| `CHIRONAI_PHONE_STATUS_TOKEN` | Off-loopback secret for `GET /api/webui/host/phone-status` | Empty: loopback only |
+| `CHIRONAI_PHONE_STATUS_GPU_BUSY_PCT` | GPU % treated as generation when no live LLM traces | `15` |
 
 ## Qdrant
 

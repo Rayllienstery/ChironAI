@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 
+from web_interaction.search_quality import rewrite_query
 from web_interaction.triggers import WebSupplementTrigger
 
 _FENCE_RE = re.compile(r"```[\w]*\n[\s\S]*?```|```[\s\S]*?```", re.MULTILINE)
@@ -54,6 +55,7 @@ def build_search_queries(user_message: str, trigger: WebSupplementTrigger, *, ma
     if not cleaned:
         return []
 
+    cleaned = rewrite_query(cleaned)
     queries: list[str] = [cleaned]
 
     if trigger == "low_confidence_framework":

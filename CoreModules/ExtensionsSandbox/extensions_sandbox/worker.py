@@ -95,6 +95,23 @@ class _DockerProxy:
         return dict(_host_call("docker_runtime", "check_image_update", image) or {})
 
 
+class _HermesProxy:
+    def inspect(self) -> dict[str, Any]:
+        return dict(_host_call("hermes_runtime", "inspect") or {})
+
+    def ensure(self) -> dict[str, Any]:
+        return dict(_host_call("hermes_runtime", "ensure") or {})
+
+    def stop(self) -> dict[str, Any]:
+        return dict(_host_call("hermes_runtime", "stop") or {})
+
+    def update(self) -> dict[str, Any]:
+        return dict(_host_call("hermes_runtime", "update") or {})
+
+    def ensure_dashboard(self, open_browser: bool = False) -> dict[str, Any]:
+        return dict(_host_call("hermes_runtime", "ensure_dashboard", open_browser=open_browser) or {})
+
+
 class _ChatClientProxy:
     def __init__(self, attrs: dict[str, Any]) -> None:
         self._url = str(attrs.get("_url") or "")
@@ -147,6 +164,7 @@ def _initialize(params: dict[str, Any]) -> dict[str, Any]:
         get_settings_repository=lambda: _SettingsProxy(),
         chat_client=_ChatClientProxy(dict(params.get("chat_client_attrs") or {})),
         docker_runtime=_DockerProxy() if bool(params.get("has_docker_runtime")) else None,
+        hermes_runtime=_HermesProxy() if bool(params.get("has_hermes_runtime")) else None,
         metadata=_metadata_proxy(list(params.get("metadata_callables") or [])),
     )
     factory = _load_factory_from_entrypoint(source_dir, str(params.get("entrypoint") or ""))

@@ -37,6 +37,50 @@ export default function LayoutShowcase() {
         </ShowcaseItem>
 
         <ShowcaseItem
+          name="Host script enable row"
+          classes={[".phone-host-card", ".phone-host-card-row", ".coreui-switch"]}
+          source={`${sourceRoot}/components/PhoneHostTab.jsx, ${sourceRoot}/styles/components/PhoneHostTab.css`}
+          description="Card list row with a CoreUI switch for enabling or disabling a host script. Used by the iPhone PC tab."
+        >
+          <Card className="phone-host-card">
+            <div className="phone-host-card-row">
+              <div className="phone-host-card-copy">
+                <h3 className="phone-host-card-title">Phone host</h3>
+                <p className="phone-host-card-description">SSH entry for Shortcuts: status, sleep, and router wake help.</p>
+              </div>
+              <label className="coreui-switch">
+                <input type="checkbox" checked readOnly aria-label="Phone host enabled" />
+                <span aria-hidden="true" />
+              </label>
+            </div>
+          </Card>
+        </ShowcaseItem>
+
+        <ShowcaseItem
+          name="Host wake recipe card"
+          classes={[".phone-host-card", ".phone-host-steps", ".phone-host-facts"]}
+          source={`${sourceRoot}/components/PhoneHostTab.jsx, ${sourceRoot}/styles/components/PhoneHostTab.css`}
+          description="Surface card with numbered steps and a mono fact list. Used by the iPhone PC tab for the Open WebUI wake path."
+        >
+          <Card className="phone-host-card">
+            <div className="phone-host-card-copy">
+              <h3 className="phone-host-card-title">Open WebUI from iPhone</h3>
+              <p className="phone-host-card-description">Wake the PC, then open chat. Do not bookmark only the PC URL while it may be asleep.</p>
+              <ol className="phone-host-steps">
+                <li>Sleep the PC (S3), do not shut down.</li>
+                <li>Open the router door URL, or run Chiron Chat.</li>
+              </ol>
+              <dl className="phone-host-facts">
+                <div className="phone-host-fact">
+                  <dt>Open WebUI</dt>
+                  <dd>http://192.168.50.115:3000</dd>
+                </div>
+              </dl>
+            </div>
+          </Card>
+        </ShowcaseItem>
+
+        <ShowcaseItem
           name="Service status"
           classes={[".status-pill", ".status-dot", ".status-spinner", ".status-text"]}
           source={`${sourceRoot}/styles/layout.css`}

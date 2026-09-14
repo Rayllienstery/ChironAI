@@ -263,6 +263,38 @@ def _build_tool_call_id_to_name(messages: list[dict[str, Any]]) -> dict[str, str
     return out
 
 
+def fold_instruction_messages_for_ollama(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Keep a single leading system turn for templates that require it.
+
+    Qwen 3.5/3.8 GGUF jinja raises ``System message must be at the beginning``
+    when any later turn has role ``system``. Hermes Agent often sends the
+    identity prompt plus hook/skill instructions as extra system messages.
+    Fold those into one leading system message, matching Ollama's native
+    qwen3.8 renderer.
+    """
+    instruction_indexes: list[int] = []
+    parts: list[str] = []
+    for idx, message in enumerate(messages):
+        if not isinstance(message, dict) or message.get("role") != "system":
+            continue
+        instruction_indexes.append(idx)
+        text = str(message.get("content") or "").strip()
+        if text:
+            parts.append(text)
+    if not instruction_indexes:
+        return messages
+    if len(instruction_indexes) == 1 and instruction_indexes[0] == 0:
+        return messages
+    rest = [
+        message
+        for message in messages
+        if not (isinstance(message, dict) and message.get("role") == "system")
+    ]
+    if not parts:
+        return rest
+    return [{"role": "system", "content": "\n\n".join(parts)}, *rest]
+
+
 def openai_messages_to_ollama(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
     Convert OpenAI chat messages (including tool role and assistant tool_calls)
@@ -366,7 +398,7 @@ def openai_messages_to_ollama(messages: list[dict[str, Any]]) -> list[dict[str, 
                 "content": f"[openai_message role={label}]\n{extra}" if extra else f"[openai_message role={label}]",
             }
         )
-    return ollama
+    return fold_instruction_messages_for_ollama(ollama)
 
 
 def openai_tool_choice_means_none(raw: Any) -> bool:
@@ -542,6 +574,7 @@ def openai_finish_reason_from_ollama(
 __all__ = [
     "arguments_to_ollama_object",
     "arguments_to_openai_string",
+    "fold_instruction_messages_for_ollama",
     "ollama_chat_tool_choice_payload_value",
     "openai_finish_reason_from_ollama",
     "openai_messages_to_ollama",

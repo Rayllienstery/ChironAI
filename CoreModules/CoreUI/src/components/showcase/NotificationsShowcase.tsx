@@ -19,24 +19,11 @@ export default function NotificationsShowcase() {
       <ShowcaseSection title="Notification Cards">
         <ShowcaseItem
           name="Notification card variants"
-          classes={[".notification-center-card", ".notification-center-card--error", ".notification-center-card--loading", ".notification-center-card--live"]}
-          source={`${sourceRoot}/components/NotificationCenterShell.jsx, ${sourceRoot}/styles/components/NotificationCenter.css`}
-          description="Floating notification cards for errors, loading states, events, and live activity. Rendered in a fixed bottom-right stack."
+          classes={[".notification-center-card", ".notification-center-card--error", ".notification-center-card--loading", ".notification-center-card--live", ".notification-center-sticky"]}
+          source={`${sourceRoot}/components/NotificationCenterShell.jsx, ${sourceRoot}/components/ProxiesLiveNotificationBridge.jsx, ${sourceRoot}/components/DockerEngineNotificationBridge.jsx, ${sourceRoot}/styles/components/NotificationCenter.css`}
+          description="Floating notification cards. Live RAG Fusion Proxy activity stays pinned at the bottom of the stack (closeable). The Docker Engine card stays pinned above those live cards and is not removed by Clear."
         >
           <div className="coreui-showcase-notification-stack">
-            <Card className="notification-center-card notification-center-card--error coreui-showcase-notification-demo-card" elevation="var(--md-sys-elevation-level2)">
-              <div className="notification-center-card-header">
-                <span className="notification-center-card-header-title">Service unreachable</span>
-                <button type="button" className="notification-center-card-close" aria-label="Dismiss">×</button>
-              </div>
-              <div className="notification-center-card-main">
-                <div className="notification-center-card-message">Qdrant did not respond within the timeout window.</div>
-              </div>
-              <div className="notification-center-module-footer">
-                <span className="notification-center-module-footer-source">RAG / Qdrant</span>
-                <span className="notification-center-module-footer-time">14:22</span>
-              </div>
-            </Card>
             <Card className="notification-center-card notification-center-card--loading coreui-showcase-notification-demo-card" elevation="var(--md-sys-elevation-level2)">
               <div className="notification-center-card-header">
                 <span className="notification-center-card-spinner" aria-hidden="true" />
@@ -56,6 +43,21 @@ export default function NotificationsShowcase() {
                 <span className="notification-center-module-footer-time">14:20</span>
               </div>
             </Card>
+            <Card className="notification-center-card notification-center-card--error coreui-showcase-notification-demo-card" elevation="var(--md-sys-elevation-level2)">
+              <div className="notification-center-card-header">
+                <span className="notification-center-card-header-title">Docker Engine unavailable</span>
+              </div>
+              <div className="notification-center-card-main">
+                <div className="notification-center-card-message">Docker Engine is not running. Start Docker to continue.</div>
+                <div className="notification-center-card-actions">
+                  <button type="button" className="notification-center-card-action-btn">Start Docker</button>
+                </div>
+              </div>
+              <div className="notification-center-module-footer">
+                <span className="notification-center-module-footer-source">Docker</span>
+                <span className="notification-center-module-footer-time">14:22</span>
+              </div>
+            </Card>
             <Card className="notification-center-card notification-center-card--live coreui-showcase-notification-demo-card" elevation="var(--md-sys-elevation-level2)">
               <div className="notification-center-card-header">
                 <span className="notification-center-card-header-title">RAG Fusion Proxy</span>
@@ -69,6 +71,7 @@ export default function NotificationsShowcase() {
                 <div className="proxy-live-notification-actions">
                   <button type="button" className="coreui-btn coreui-btn-ghost coreui-btn-small">Traces</button>
                   <span className="coreui-btn coreui-btn-ghost coreui-btn-small proxy-live-notification-token-chip">128 tok</span>
+                  <span className="coreui-btn coreui-btn-ghost coreui-btn-small proxy-live-notification-token-chip">12%</span>
                   <span className="coreui-btn coreui-btn-ghost coreui-btn-small proxy-live-notification-token-chip">URL fetch: 6</span>
                 </div>
                 <div className="proxy-live-notification-stream-preview">
@@ -85,7 +88,7 @@ export default function NotificationsShowcase() {
 
         <ShowcaseItem
           name="Notification card anatomy"
-          classes={[".notification-center-card-header", ".notification-center-card-main", ".notification-center-card-message", ".notification-center-card-timer", ".notification-center-card-actions", ".notification-center-module-footer"]}
+          classes={[".notification-center-card-header", ".notification-center-card-main", ".notification-center-card-message", ".notification-center-card-timer", ".notification-center-card-actions", ".notification-center-card-action-busy", ".notification-center-module-footer"]}
           source={`${sourceRoot}/components/NotificationCenterShell.jsx, ${sourceRoot}/styles/components/NotificationCenter.css`}
           description="Each card has a header (title + spinner + close), a body (message, timer, action buttons), and a footer (source module + time)."
         >

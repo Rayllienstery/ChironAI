@@ -39,6 +39,7 @@ from model_visibility import (  # noqa: E402
     get_hidden_ollama_model_ids,
     patch_hidden_ollama_model_ids,
 )
+from ollama_cloud_settings import fetch_cloud_usage  # noqa: E402
 from ollama_http import (  # noqa: E402
     invoke_delete,
     invoke_ping,
@@ -419,6 +420,7 @@ class OllamaProvider:
         }
 
         ctn = self._docker_container_name()
+        cloud_usage = fetch_cloud_usage(self._host.get_settings_repository())
         schema = {
             "pages": [
                 {
@@ -429,6 +431,11 @@ class OllamaProvider:
                             "id": "docker",
                             "title": "Docker container",
                             "components": [self._docker_card_component(docker_state)],
+                        },
+                        {
+                            "id": "cloud_usage",
+                            "title": "Ollama Cloud plan & usage",
+                            "components": self._cloud_usage_components(cloud_usage),
                         },
                         {
                             "id": "pull",
@@ -893,6 +900,146 @@ class OllamaProvider:
             "current_version": str(check.get("current_version") or ""),
             "update_version": str(check.get("update_version") or ""),
         }
+
+    def _cloud_usage_components(self, usage: dict[str, Any]) -> list[dict[str, Any]]:
+        """Schema components for the ollama.com plan/quota section."""
+        if not usage.get("configured"):
+            return [
+                {
+                    "type": "text",
+                    "key": "cloud_usage_status",
+                    "label": "Status",
+                    "value": "Not configured — sign in to ollama.com inside the Ollama container (see Cloud models below).",
+                },
+            ]
+        components: list[dict[str, Any]] = [
+            {
+                "type": "text",
+                "key": "cloud_usage_plan",
+                "label": "Plan",
+                "value": str(usage.get("plan") or "—"),
+            },
+            {
+                "type": "text",
+                "key": "cloud_usage_session",
+                "label": "Session usage",
+                "value": str(usage.get("session_usage") or "—"),
+            },
+            {
+                "type": "text",
+                "key": "cloud_usage_weekly",
+                "label": "Weekly usage",
+                "value": str(usage.get("weekly_usage") or "—"),
+            },
+        ]
+        if usage.get("activity_cost"):
+            components.append(
+                {
+                    "type": "text",
+                    "key": "cloud_usage_cost",
+                    "label": "Activity cost (4 weeks)",
+                    "value": str(usage.get("activity_cost")),
+                }
+            )
+        if usage.get("session_models"):
+            components.append(
+                {
+                    "type": "text",
+                    "key": "cloud_usage_session_models",
+                    "label": "Session requests",
+                    "value": str(usage.get("session_models")),
+                }
+            )
+        if usage.get("weekly_models"):
+            components.append(
+                {
+                    "type": "text",
+                    "key": "cloud_usage_weekly_models",
+                    "label": "Weekly requests",
+                    "value": str(usage.get("weekly_models")),
+                }
+            )
+        error = str(usage.get("error") or "").strip()
+        if error:
+            components.append(
+                {
+                    "type": "text",
+                    "key": "cloud_usage_error",
+                    "label": "Error",
+                    "value": error,
+                }
+            )
+        return components
+
+    def _cloud_usage_components(self, usage: dict[str, Any]) -> list[dict[str, Any]]:
+        """Schema components for the ollama.com plan/quota section."""
+        if not usage.get("configured"):
+            return [
+                {
+                    "type": "text",
+                    "key": "cloud_usage_status",
+                    "label": "Status",
+                    "value": "Not configured — sign in to ollama.com inside the Ollama container (see Cloud models below).",
+                },
+            ]
+        components: list[dict[str, Any]] = [
+            {
+                "type": "text",
+                "key": "cloud_usage_plan",
+                "label": "Plan",
+                "value": str(usage.get("plan") or "—"),
+            },
+            {
+                "type": "text",
+                "key": "cloud_usage_session",
+                "label": "Session usage",
+                "value": str(usage.get("session_usage") or "—"),
+            },
+            {
+                "type": "text",
+                "key": "cloud_usage_weekly",
+                "label": "Weekly usage",
+                "value": str(usage.get("weekly_usage") or "—"),
+            },
+        ]
+        if usage.get("activity_cost"):
+            components.append(
+                {
+                    "type": "text",
+                    "key": "cloud_usage_cost",
+                    "label": "Activity cost (4 weeks)",
+                    "value": str(usage.get("activity_cost")),
+                }
+            )
+        if usage.get("session_models"):
+            components.append(
+                {
+                    "type": "text",
+                    "key": "cloud_usage_session_models",
+                    "label": "Session requests",
+                    "value": str(usage.get("session_models")),
+                }
+            )
+        if usage.get("weekly_models"):
+            components.append(
+                {
+                    "type": "text",
+                    "key": "cloud_usage_weekly_models",
+                    "label": "Weekly requests",
+                    "value": str(usage.get("weekly_models")),
+                }
+            )
+        error = str(usage.get("error") or "").strip()
+        if error:
+            components.append(
+                {
+                    "type": "text",
+                    "key": "cloud_usage_error",
+                    "label": "Error",
+                    "value": error,
+                }
+            )
+        return components
 
     def _docker_card_component(self, state: dict[str, Any]) -> dict[str, Any]:
         """Return a single `docker_card` schema component for the Docker section."""

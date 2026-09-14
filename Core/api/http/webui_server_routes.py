@@ -25,6 +25,12 @@ def register_server_routes(bp: Blueprint, *, error_log: Any) -> None:
         """Gracefully stop the local WebUI HTTP server (dev / local shutdown)."""
         try:
             _WEBUI_LOG.info("Received WebUI shutdown request")
+            try:
+                from application.hermes_runtime import stop_bound_gateway
+
+                stop_bound_gateway()
+            except Exception:
+                _WEBUI_LOG.debug("Hermes gateway stop on server shutdown failed", exc_info=True)
             _shutdown_werkzeug_server()
             return jsonify({"status": "stopping"})
         except Exception as exc:

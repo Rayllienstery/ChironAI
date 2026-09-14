@@ -4,6 +4,7 @@ import { startLogPolling, stopLogPolling } from '../services/logs';
 import '../styles/components/LogsTab.css';
 import CoreUIButton from './CoreUIButton';
 import CoreUIPillTabs from './CoreUIPillTabs';
+import { ProxyLogFetchedUrls } from './FetchedUrlList';
 import ProxyTracesTab from './ProxyTracesTab';
 import ProxyJournalTab from './ProxyJournalTab';
 import RemoteRevealPinGate from './RemoteRevealPinGate';
@@ -443,6 +444,7 @@ function LogsTab({ sessionId, focusSubTab, onFocusSubTabConsumed }) {
               </div>
             </div>
           )}
+          <ProxyLogFetchedUrls metadata={metadata} />
         </div>
       </div>
     );

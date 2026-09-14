@@ -57,6 +57,7 @@ from llm_proxy.chat_completions_native_tools_prep import (
 from llm_proxy.chat_completions_ollama_proxy import (
     _append_trace_warning,
     _build_rag_collection_issue,
+    _drop_upstream_num_ctx_for_flash_smart,
     _effective_max_agent_steps,
     _effective_num_ctx,
     _effective_num_predict,
@@ -259,6 +260,12 @@ def run_chat_completions(
     if dumb_build_pipeline and active_build:
         build_sse_streaming = active_build.get("sse_streaming", True) is not False
 
+    _drop_upstream_num_ctx_for_flash_smart(
+        build_extra_options,
+        requested_model=requested_model,
+        active_build=active_build,
+    )
+
     effective_num_predict = _effective_num_predict(
         chat_client,
         build_extra_options,
@@ -268,6 +275,8 @@ def run_chat_completions(
     input_budget = _input_budget_from_context(
         num_ctx=effective_num_ctx,
         num_predict=effective_num_predict,
+        requested_model=requested_model,
+        active_build=active_build,
     )
 
     private_build = bool(dumb_build_pipeline and active_build and bool(active_build.get("private")))
@@ -455,7 +464,12 @@ def run_chat_completions(
     if url_fetch_count:
         from api.http.proxy_trace import update_live_url_fetch_count
 
-        update_live_url_fetch_count(trace_id=trace_id, url_fetch_count=url_fetch_count)
+        request_trace = trace.get("request") if isinstance(trace.get("request"), dict) else {}
+        update_live_url_fetch_count(
+            trace_id=trace_id,
+            url_fetch_count=url_fetch_count,
+            url_fetch_urls=request_trace.get("url_fetch_urls"),
+        )
 
     # IDE-independent mode: do not fail fast solely on schema checks.
     # Some clients expose incomplete tool schemas but still accept write payloads at runtime.

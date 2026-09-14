@@ -12,9 +12,9 @@ Small **CoreModules** package used by the ChironAI LLM Proxy to optionally attac
 
 1. **Query build** — strip code fences, shorten text; for framework triggers add `site:developer.apple.com`; for version-ish keyword triggers optionally add `release`.
 2. **Search** — one or two DDG `text` queries, merged and deduped by URL; optional **`news`** hits (past month) when `WEB_INTERACTION_DDG_NEWS=1` and trigger is `keywords`.
-3. **Rank** — prefer `developer.apple.com`, `swift.org`, `github.com`, …; soft blocklist for noisy domains; trim to `max_n`.
+3. **Rank** — boost GitHub/HF/arXiv/Apple docs, drop junk hosts, prefer query overlap, trim to `max_n`.
 4. **Cache** — in-process TTL on ranked snippets (`WEB_INTERACTION_CACHE_TTL_S`, default 180s; set `0` to disable).
-5. **Optional excerpt** — one HTTP GET for the top result if `WEB_INTERACTION_FETCH_PAGE=1` and URL host is `developer.apple.com` or `swift.org` (strict allowlist).
+5. **Optional excerpt** — one HTTP GET for the top allowed URL if `WEB_INTERACTION_FETCH_PAGE=1` (Apple/Swift/GitHub raw/HF/arXiv/MDN/Python docs/Wikipedia). YouTube is skipped. GitHub repo URLs are rewritten to raw README when possible.
 6. **Optional Wikipedia** — if DDG returned no snippets, trigger is `keywords`, and `WEB_INTERACTION_WIKIPEDIA=1`, try English Wikipedia OpenSearch + REST summary (short question heuristics).
 
 ## Install
@@ -37,7 +37,7 @@ The main `chironai` project declares `duckduckgo-search` and related deps; this 
 | `WEB_INTERACTION_PREFERRED_DOMAINS` | built-in list | Optional comma-separated substrings to boost in ranking (e.g. `swift.org,github.com`). |
 | `WEB_INTERACTION_DDG_REGION` | (auto) | Force DDG region (e.g. `us-en`). If unset and the user message contains Cyrillic, defaults to `ru-ru` for text/news. |
 | `WEB_INTERACTION_DDG_NEWS` | off | `1` merges DDG **news** (past month) into the pool for `keywords` triggers only; API may change. |
-| `WEB_INTERACTION_FETCH_PAGE` | off | `1` enables one HTML→text excerpt for top URL on strict allowlist (`developer.apple.com`, `swift.org`). |
+| `WEB_INTERACTION_FETCH_PAGE` | off | `1` enables one HTML→text excerpt for the top allowed URL (Apple/Swift/GitHub raw/HF/arXiv/MDN/Python docs/Wikipedia). |
 | `WEB_INTERACTION_WIKIPEDIA` | off | `1` enables Wikipedia fallback when DDG returns no snippets (short factual questions, `keywords` trigger). |
 
 ## Reliability

@@ -58,7 +58,7 @@ _SLOW_TEST_NODEIDS = {
     "tests/api/test_http_chat_completions.py::test_stream_trace_separates_reasoning_and_final_content_in_sse",
     "tests/api/test_http_chat_completions.py::test_chat_completions_non_stream_uses_ollama_provider_runtime",
     "tests/api/test_http_chat_completions.py::test_chat_completions_stream_uses_ollama_provider_runtime",
-    "tests/api/test_http_chat_completions.py::test_stream_reasoning_only_guard_stops_visible_repeat",
+    "tests/api/test_http_chat_completions.py::test_stream_reasoning_only_guard_does_not_abort_thinking",
     "tests/api/test_http_chat_completions.py::test_streaming_budget_exhaustion_is_visible_to_client",
 }
 

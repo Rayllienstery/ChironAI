@@ -596,6 +596,19 @@ export async function getDockerStatus() {
   return data;
 }
 
+export async function startDockerEngine() {
+  const response = await fetch(`${API_BASE}/docker/engine/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data.ok === false) {
+    throw new Error(data.details || data.message || extractApiError(data, 'Failed to start Docker Engine'));
+  }
+  return data;
+}
+
 export async function getDockerContainers() {
   const response = await fetch(`${API_BASE}/docker/containers`, {
     cache: 'no-store',
@@ -687,6 +700,88 @@ export async function getStartupPerformance() {
   });
   if (!response.ok) {
     throw new Error(extractApiError(data, 'Failed to fetch startup performance'));
+  }
+  return data;
+}
+
+/**
+ * Live RAM / GPU / process snapshot for Performance → Details.
+ *
+ * @returns {Promise<object>}
+ */
+export async function getPerformanceSnapshot() {
+  const { response, data } = await fetchJsonWithTimeout(`${API_BASE}/performance/snapshot`, {
+    timeoutMs: 12000,
+    fetchOptions: { method: 'GET' },
+  });
+  if (!response.ok) {
+    throw new Error(extractApiError(data, 'Failed to fetch performance snapshot'));
+  }
+  return data;
+}
+
+/**
+ * Compact host/generation status for iPhone Shortcuts (SSH curl to localhost).
+ *
+ * @public
+ * @returns {Promise<object>}
+ */
+export async function getPhoneHostStatus() {
+  const { response, data } = await fetchJsonWithTimeout(`${API_BASE}/host/phone-status`, {
+    timeoutMs: 8000,
+    fetchOptions: { method: 'GET' },
+  });
+  if (!response.ok) {
+    throw new Error(extractApiError(data, 'Could not load phone host status'));
+  }
+  return data;
+}
+
+/**
+ * List iPhone phone-host scripts and enabled flags.
+ *
+ * @returns {Promise<{scripts: object[]}>}
+ */
+export async function getPhoneHostScripts() {
+  const { response, data } = await fetchJsonWithTimeout(`${API_BASE}/host/phone-scripts`, {
+    timeoutMs: 8000,
+    fetchOptions: { method: 'GET' },
+  });
+  if (!response.ok) {
+    const fallback =
+      response.status === 404
+        ? 'HTTP 404: /api/webui/host/phone-scripts is not on this backend process'
+        : 'Could not load phone host scripts';
+    const err = new Error(extractApiError(data, fallback));
+    err.status = response.status;
+    throw err;
+  }
+  return data;
+}
+
+/**
+ * Enable or disable one phone-host script.
+ *
+ * @param {string} scriptId
+ * @param {boolean} enabled
+ * @returns {Promise<{scripts: object[]}>}
+ */
+export async function setPhoneHostScriptEnabled(scriptId, enabled) {
+  const { response, data } = await fetchJsonWithTimeout(
+    `${API_BASE}/host/phone-scripts/${encodeURIComponent(scriptId)}`,
+    {
+      timeoutMs: 8000,
+      fetchOptions: {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: Boolean(enabled) }),
+      },
+    },
+  );
+  if (!response.ok) {
+    const err = new Error(extractApiError(data, 'Failed to update phone host script'));
+    err.status = response.status;
+    throw err;
   }
   return data;
 }

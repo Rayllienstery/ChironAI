@@ -2,6 +2,30 @@
 
 Short gate before tagging a release. Run from repo root unless noted.
 
+## Release candidate 0.10.39 notes
+
+Status: **released (Pre-Release Stable)** — tag `v0.10.39` (2026-09-14). Current **Latest** on GitHub for the active line; `v0.8.63` remains the last **STABLE** tag.
+
+Highlights (0.10.13–0.10.39):
+
+- **Hermes Agent:** bundled host extension starts/stops the gateway, dashboard, and Open WebUI Hermes routes (Pico/hybrid/Flash/Smart).
+- **iPhone PC:** wake/sleep/status over WireGuard plus CoreUI tab and compact `GET /api/webui/host/phone-status`.
+- **Live proxy UX:** token chip, context-window fill, fetched URLs, pinned live cards, Performance Details.
+- **Search quality:** ranking, cookie-overlay stripping, vocative/adult filters.
+- **Stability:** Waitress workers, SSE timeouts, GLM compaction/budget, Hermes spawn without extra consoles.
+- **Idle:** proxy activity pulses Windows sleep/display timers instead of holding awake for the whole process.
+- **Repo hygiene:** ignore Hermes/agent dump folders and local host recipes so private smoke output cannot land in git.
+
+Verification snapshot (2026-09-14):
+
+- `python scripts/check_version_drift.py` — passed (0.10.39).
+- `python scripts/check_api_drift.py --strict --strict-openapi` — passed (142 OpenAPI paths).
+- `python scripts/gen_api_docs.py --check` — passed.
+- Targeted pytest — 203 passed (Hermes runtime/extension, phone-host, proxy, Docker, search, oversized-audit).
+- `ruff check` on edited Python — passed.
+- CoreUI `npm run build` + `bundle:budget` — passed (1742861 / 1761280).
+- Local backend smoke: `build_and_run.bat` reached `Server ready` on port 8080; smoke processes stopped.
+
 ## Release candidate 0.10.12 notes
 
 Status: **released (Pre-Release Stable)** — tag `v0.10.12` (2026-08-29). Current **Latest** on GitHub for the active line; `v0.8.63` remains the last **STABLE** tag.

@@ -8,9 +8,11 @@ for its own Open WebUI resources through host capabilities.
 from __future__ import annotations
 
 import os
+import secrets
 import sys
 import time
 from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
@@ -18,6 +20,7 @@ import requests
 
 LEGACY_BACKEND_KEY = "open_webui_ollama_base_url"
 BACKEND_KEY = "extensions.open-webui.ollama_base_url"
+SECRET_SETTING_KEY = "ext.webui_secret_key"
 DEFAULT_OPEN_WEBUI_IMAGE = "ghcr.io/open-webui/open-webui:main"
 
 
@@ -147,6 +150,46 @@ class OpenWebUiExtension:
             volumes=[os.getenv("OPEN_WEBUI_DATA_VOLUME", "open-webui") + ":/app/backend/data"],
         )
 
+    def _dotenv_map(self, path: Any) -> dict[str, str]:
+        try:
+            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            return {}
+        parsed: dict[str, str] = {}
+        for raw in lines:
+            stripped = raw.strip()
+            if not stripped or stripped.startswith("#") or "=" not in stripped:
+                continue
+            key, _, value = stripped.partition("=")
+            parsed[key.strip()] = value.strip().strip('"').strip("'")
+        return parsed
+
+    def _hermes_openai_for_container(self) -> tuple[str, str]:
+        """Return (url, key) for the host Hermes API server, or empty strings."""
+        env_url = (os.getenv("OPEN_WEBUI_HERMES_API_BASE_URL") or "").strip().rstrip("/")
+        env_key = (os.getenv("OPEN_WEBUI_HERMES_API_KEY") or "").strip()
+        override = (os.getenv("HERMES_HOME") or "").strip()
+        home = Path(override) if override else None
+        if home is None:
+            local = (os.getenv("LOCALAPPDATA") or "").strip()
+            if local:
+                home = Path(local) / "hermes"
+        port = 8642
+        key = env_key
+        if home is not None:
+            parsed = self._dotenv_map(home / ".env")
+            raw_port = parsed.get("API_SERVER_PORT") or str(port)
+            try:
+                port = int(raw_port)
+            except (TypeError, ValueError):
+                port = 8642
+            if not key:
+                key = (parsed.get("API_SERVER_KEY") or "").strip()
+        url = env_url or f"http://host.docker.internal:{port}/v1"
+        if not key:
+            return "", ""
+        return url, key
+
     def _chiron_openai_api_key(self, *, create_if_missing: bool = False) -> tuple[str, str]:
         """Return (key, state) for OpenWebUI's OpenAI-compatible Chiron provider."""
         try:
@@ -170,6 +213,15 @@ class OpenWebUiExtension:
         if bool(status.get("configured")):
             return "", "not recoverable"
         return "", "missing"
+
+    def _webui_secret_key(self) -> str:
+        repo = self._settings_repo()
+        existing = str(repo.get_app_setting(SECRET_SETTING_KEY) or "").strip()
+        if existing:
+            return existing
+        generated = secrets.token_urlsafe(48)
+        repo.set_app_setting(SECRET_SETTING_KEY, generated)
+        return generated
 
     def _docker_runtime(self) -> Any | None:
         if self._docker_override is not None:
@@ -197,11 +249,32 @@ class OpenWebUiExtension:
             extra_hosts = ["host.docker.internal:host-gateway"]
         if chiron_api_key is None:
             chiron_api_key, _state = self._chiron_openai_api_key(create_if_missing=True)
+        # Hermes Agent routes only. ChironAI proxy builds and raw Ollama tags
+        # otherwise appear in the Open WebUI model picker.
+        openai_urls: list[str] = []
+        openai_keys: list[str] = []
+        hermes_url, hermes_key = self._hermes_openai_for_container()
+        if hermes_url and hermes_key:
+            openai_urls.append(hermes_url)
+            openai_keys.append(hermes_key)
+        else:
+            openai_urls.append(cfg.openai_base_url_for_container)
+            openai_keys.append(chiron_api_key)
         env = {
             "OLLAMA_BASE_URL": cfg.ollama_url_for_container,
+            "ENABLE_OLLAMA_API": "False",
             "ENABLE_OPENAI_API": "True",
-            "OPENAI_API_BASE_URLS": cfg.openai_base_url_for_container,
-            "OPENAI_API_KEYS": chiron_api_key,
+            "OPENAI_API_BASE_URLS": ";".join(openai_urls),
+            "OPENAI_API_KEYS": ";".join(openai_keys),
+            # Default 300s total timeout kills long GLM thinking and shows up as
+            # TransferEncodingError. Empty string is parsed incorrectly in Docker.
+            "AIOHTTP_CLIENT_TIMEOUT": "86400",
+            # Default aiohttp readline cap is 2 * 64KiB = 131072 and 400s the
+            # chat when Hermes used to emit a 1.6MB data-URL SSE line.
+            "AIOHTTP_READ_BUFSIZE": "8388608",
+            "CHAT_STREAM_RESPONSE_CHUNK_MAX_BUFFER_SIZE": "20971520",
+            # Read-only root FS cannot write .webui_secret_key; env avoids that.
+            "WEBUI_SECRET_KEY": self._webui_secret_key(),
         }
         return DockerContainerSpec(
             name=cfg.container_name,
@@ -348,6 +421,8 @@ class OpenWebUiExtension:
         source = "saved" if saved else "environment" if env_set else "default"
         llm_proxy_hint = f"http://host.docker.internal:{self._server_port()}"
         _chiron_api_key, chiron_key_state = self._chiron_openai_api_key(create_if_missing=False)
+        hermes_url, hermes_key = self._hermes_openai_for_container()
+        hermes_openai_state = hermes_url if hermes_key else "not configured"
         running = bool(status.get("running"))
 
         actions = [
@@ -439,6 +514,7 @@ class OpenWebUiExtension:
                     {"label": "Port", "value": f"{cfg.host_port}:{cfg.container_port}"},
                     {"label": "Backend source", "value": source},
                     {"label": "Chiron OpenAI URL", "value": cfg.openai_base_url_for_container},
+                    {"label": "Hermes OpenAI URL", "value": hermes_openai_state},
                     {"label": "Chiron API key", "value": chiron_key_state},
                 ],
                 "service": {
@@ -461,6 +537,7 @@ class OpenWebUiExtension:
                         {"label": "Port", "value": f"{cfg.host_port}:{cfg.container_port}"},
                         {"label": "Backend source", "value": source},
                         {"label": "Chiron OpenAI URL", "value": cfg.openai_base_url_for_container},
+                        {"label": "Hermes OpenAI URL", "value": hermes_openai_state},
                         {"label": "Chiron API key", "value": chiron_key_state},
                     ],
                 },
@@ -513,6 +590,7 @@ class OpenWebUiExtension:
                                             f"Container port={cfg.container_port} | "
                                             f"Backend source={source} | "
                                             f"Chiron OpenAI URL={cfg.openai_base_url_for_container} | "
+                                            f"Hermes OpenAI URL={hermes_openai_state} | "
                                             f"Chiron API key={chiron_key_state}"
                                         ),
                                     },

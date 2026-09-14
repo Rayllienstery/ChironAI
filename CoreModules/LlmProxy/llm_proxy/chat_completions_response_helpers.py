@@ -18,6 +18,14 @@ _CONTENT_LENGTH_RE = re.compile(
 )
 _WORKER_CALL_TIMEOUT_RE = re.compile(r"\bworker call timed out:\s*request\s+(?P<id>\d+)\b", re.IGNORECASE)
 _UPSTREAM_ERROR_DETAIL_LIMIT = 500
+_OLLAMA_CLOUD_CHAT_FORBIDDEN_RE = re.compile(
+    r"does not have permission to get URL.{0,80}/api/chat",
+    re.IGNORECASE | re.DOTALL,
+)
+_OLLAMA_CLOUD_CHAT_FORBIDDEN_DETAIL = (
+    "Ollama Cloud forbidden /api/chat; the local daemon is not signed in to ollama.com. "
+    "Save a Cloud API key in Extensions → Ollama"
+)
 
 
 def reasoning_sse_delta(kind: str, data: Any, *, include_reasoning_content: bool) -> dict[str, Any]:
@@ -40,7 +48,7 @@ def stream_reasoning_guard_message(
     return (
         "[Error: reasoning-only response guard triggered: model produced "
         f"{len(reasoning_text)} reasoning chars without final content or tool calls. "
-        "Try disabling thinking or shortening the prompt.]"
+        "The upstream stream ended before a final answer or tool call.]"
     )
 
 
@@ -126,6 +134,8 @@ def _compact_upstream_error_detail(text: str) -> str:
     raw = str(text or "").strip()
     if not raw:
         return ""
+    if _OLLAMA_CLOUD_CHAT_FORBIDDEN_RE.search(raw):
+        return _OLLAMA_CLOUD_CHAT_FORBIDDEN_DETAIL
     match = _OLLAMA_JSON_ERROR_RE.search(raw)
     if match:
         detail = _json_string_unescape(match.group("detail")).replace("\\'", "'").strip()

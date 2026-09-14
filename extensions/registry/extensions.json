@@ -116,6 +116,42 @@
           "requires_user_consent": true
         }
       ]
+    },
+    {
+      "id": "hermes-agent",
+      "title": "Hermes",
+      "description": "Host-managed Hermes Agent gateway through ChironAI host capabilities.",
+      "icon": "icons/hermes-agent-light.svg",
+      "repository": "https://github.com/Rayllienstery/chironai-extension-hermes-agent",
+      "repository_id": "R_kgDOUI-P6w",
+      "publisher": {
+        "name": "ChironAI",
+        "url": "https://github.com/Rayllienstery",
+        "trust_state": "official",
+        "verified": true
+      },
+      "visibility": "official",
+      "tags": ["hermes", "agent", "gateway"],
+      "compatibility": {
+        "app": "chironai",
+        "extension_api_version": "1"
+      },
+      "capabilities": [
+        {
+          "id": "tab_ui",
+          "label": "Extension Tab",
+          "description": "Adds a Hermes Agent tab to ChironAI.",
+          "risk": "low",
+          "requires_user_consent": false
+        },
+        {
+          "id": "service_actions",
+          "label": "Service Actions",
+          "description": "Starts, stops, and updates the host Hermes Agent gateway through ChironAI host capabilities.",
+          "risk": "high",
+          "requires_user_consent": true
+        }
+      ]
     }
   ],
   "blocklist": []

@@ -74,7 +74,20 @@ def _prune_response_artifacts(now: datetime) -> None:
             _response_artifacts_updated.pop(key, None)
 
 
-def _patch_live_completion_tokens(tr: dict[str, Any], completion_tokens: int) -> None:
+def _int_or_none(value: Any) -> int | None:
+    try:
+        n = int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+    return n
+
+
+def _patch_live_token_estimates(
+    tr: dict[str, Any],
+    *,
+    completion_tokens: int | None = None,
+    prompt_tokens: int | None = None,
+) -> None:
     ollama = tr.get("ollama")
     if not isinstance(ollama, dict):
         ollama = {}
@@ -84,15 +97,18 @@ def _patch_live_completion_tokens(tr: dict[str, Any], completion_tokens: int) ->
         estimates = {}
         ollama["tokens_estimates"] = estimates
     ollama["chat_stream"] = True
-    out = max(0, int(completion_tokens))
-    estimates["completion_tokens_estimated"] = out
-    prompt_raw = estimates.get("prompt_tokens_estimated")
-    try:
-        prompt_n = int(prompt_raw) if prompt_raw is not None else None
-    except (TypeError, ValueError):
-        prompt_n = None
-    if prompt_n is not None:
-        estimates["total_tokens_estimated"] = prompt_n + out
+    if prompt_tokens is not None:
+        estimates["prompt_tokens_estimated"] = max(0, int(prompt_tokens))
+    if completion_tokens is not None:
+        estimates["completion_tokens_estimated"] = max(0, int(completion_tokens))
+    prompt_n = _int_or_none(estimates.get("prompt_tokens_estimated"))
+    completion_n = _int_or_none(estimates.get("completion_tokens_estimated"))
+    if prompt_n is not None and completion_n is not None:
+        estimates["total_tokens_estimated"] = prompt_n + completion_n
+
+
+def _patch_live_completion_tokens(tr: dict[str, Any], completion_tokens: int) -> None:
+    _patch_live_token_estimates(tr, completion_tokens=completion_tokens)
 
 
 def _strip_live_preview_fields(tr: dict[str, Any]) -> None:
@@ -160,6 +176,7 @@ def update_live_stream_progress(
     *,
     trace_id: str | None = None,
     completion_tokens: int = 0,
+    prompt_tokens: int | None = None,
     visible_tail: str | None = None,
     visible_tail_truncated: bool | None = None,
 ) -> None:
@@ -170,6 +187,7 @@ def update_live_stream_progress(
     """
     global _updated_at
     tokens = max(0, int(completion_tokens))
+    prompt_n = max(0, int(prompt_tokens)) if prompt_tokens is not None else None
     with _lock:
         now = datetime.now(timezone.utc)
         _updated_at = now.isoformat()
@@ -183,18 +201,30 @@ def update_live_stream_progress(
                 truncated = bool(visible_tail_truncated) or sliced
                 _live_visible_previews[tid] = (tail, truncated)
         if _current_trace is not None and (not tid or _trace_key(_current_trace) == tid):
-            _patch_live_completion_tokens(_current_trace, tokens)
+            _patch_live_token_estimates(
+                _current_trace,
+                completion_tokens=tokens,
+                prompt_tokens=prompt_n,
+            )
             _merge_live_visible_tail(_current_trace)
         if tid:
             active = _active_traces.get(tid)
             if isinstance(active, dict):
-                _patch_live_completion_tokens(active, tokens)
+                _patch_live_token_estimates(
+                    active,
+                    completion_tokens=tokens,
+                    prompt_tokens=prompt_n,
+                )
                 _merge_live_visible_tail(active)
                 _active_trace_updated[tid] = now
         _prune_active_traces(now)
 
 
-def _patch_live_url_fetch_count(tr: dict[str, Any], url_fetch_count: int) -> None:
+def _patch_live_url_fetch_count(
+    tr: dict[str, Any],
+    url_fetch_count: int,
+    url_fetch_urls: list[str] | None = None,
+) -> None:
     n = max(0, int(url_fetch_count))
     if n <= 0:
         return
@@ -208,12 +238,18 @@ def _patch_live_url_fetch_count(tr: dict[str, Any], url_fetch_count: int) -> Non
         internet = {}
         tr["internet"] = internet
     internet["url_fetch_count"] = n
+    if isinstance(url_fetch_urls, list):
+        stored = [str(u).strip() for u in url_fetch_urls if str(u or "").strip()]
+        if stored:
+            request["url_fetch_urls"] = stored
+            internet["url_fetch_urls"] = list(stored)
 
 
 def update_live_url_fetch_count(
     *,
     trace_id: str | None = None,
     url_fetch_count: int = 0,
+    url_fetch_urls: list[str] | None = None,
 ) -> None:
     """Patch URL-fetch count onto the live card without a new ring-buffer snapshot."""
     n = max(0, int(url_fetch_count))
@@ -222,11 +258,11 @@ def update_live_url_fetch_count(
     with _lock:
         tid = str(trace_id or "").strip()
         if _current_trace is not None and (not tid or _trace_key(_current_trace) == tid):
-            _patch_live_url_fetch_count(_current_trace, n)
+            _patch_live_url_fetch_count(_current_trace, n, url_fetch_urls)
         if tid:
             active = _active_traces.get(tid)
             if isinstance(active, dict):
-                _patch_live_url_fetch_count(active, n)
+                _patch_live_url_fetch_count(active, n, url_fetch_urls)
 
 
 def set_current_trace(trace: dict[str, Any] | None) -> None:

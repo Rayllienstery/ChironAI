@@ -1,0 +1,36 @@
+{
+  "id": "hermes-agent",
+  "version": "0.1.0",
+  "api_version": "1",
+  "manifest_sha256": "b96e2a2eba901f38dc44f0f84415bd758368855b090172630c78215dfbc1a8cc",
+  "type": "ui_extension",
+  "title": "Hermes",
+  "description": "Host-managed Hermes Agent gateway through ChironAI host capabilities.",
+  "icon": "icons/hermes-agent-light.svg",
+  "tab_ui": {
+    "id": "hermes-agent",
+    "title": "Hermes",
+    "icon": "icons/hermes-agent-light.svg",
+    "order": 62
+  },
+  "backend": {
+    "entrypoint": "backend.provider:create_provider"
+  },
+  "capabilities": {
+    "tab_ui": true,
+    "iframe_tab": false,
+    "service_actions": true
+  },
+  "compatibility": {
+    "app": "chironai",
+    "extension_api_version": "1"
+  },
+  "settings_schema": {
+    "title": "Hermes Settings",
+    "fields": []
+  },
+  "ui_schema": {},
+  "metadata": {
+    "service": "hermes-agent"
+  }
+}

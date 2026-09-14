@@ -101,6 +101,17 @@ export function serviceActionIcon(actionId: string): string {
   }
 }
 
+export function servicePanelFieldKey(service: Record<string, unknown> | null | undefined): string {
+  if (!service || !Object.prototype.hasOwnProperty.call(service, 'fieldKey')) {
+    return 'backend_url';
+  }
+  return String(service.fieldKey ?? '');
+}
+
+export function servicePanelMetaColumns(service: Record<string, unknown> | null | undefined): number {
+  return Number(service?.metaColumns) === 2 ? 2 : 3;
+}
+
 export function formatBytesLoose(value: unknown): string {
   const raw = String(value ?? '').trim();
   if (!raw) return '';

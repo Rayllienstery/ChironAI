@@ -179,15 +179,32 @@ def run_chat_rag_pipeline(
     }
     background_refresh_started = False
     prior_url_fetch = 0
+    prior_url_fetch_urls: list[str] = []
     prior_internet = trace.get("internet")
     if isinstance(prior_internet, dict):
         try:
             prior_url_fetch = int(prior_internet.get("url_fetch_count") or 0)
         except (TypeError, ValueError):
             prior_url_fetch = 0
+        raw_urls = prior_internet.get("url_fetch_urls")
+        if isinstance(raw_urls, list):
+            prior_url_fetch_urls = [str(u).strip() for u in raw_urls if str(u or "").strip()]
+    if not prior_url_fetch_urls:
+        prior_request = trace.get("request")
+        if isinstance(prior_request, dict):
+            raw_urls = prior_request.get("url_fetch_urls")
+            if isinstance(raw_urls, list):
+                prior_url_fetch_urls = [str(u).strip() for u in raw_urls if str(u or "").strip()]
+            if prior_url_fetch <= 0:
+                try:
+                    prior_url_fetch = int(prior_request.get("url_fetch_count") or 0)
+                except (TypeError, ValueError):
+                    prior_url_fetch = len(prior_url_fetch_urls)
     trace["internet"] = {"background_refresh_started": False}
     if prior_url_fetch > 0:
         trace["internet"]["url_fetch_count"] = prior_url_fetch
+    if prior_url_fetch_urls:
+        trace["internet"]["url_fetch_urls"] = prior_url_fetch_urls
     rag_context_data: dict[str, Any] | None = None
 
     try:

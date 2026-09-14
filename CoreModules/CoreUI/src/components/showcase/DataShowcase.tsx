@@ -1,5 +1,6 @@
 import { CodePill, ShowcaseItem, ShowcaseSection, TokenSwatch, FontCard, sourceRoot } from './CoreUIShowcasePrimitives';
 import Card from '../Card';
+import { JournalFetchedUrlList } from '../FetchedUrlList';
 import CoreUIButton from '../CoreUIButton';
 import CoreUIBadge from '../CoreUIBadge';
 import CoreUIDockerCard from '../CoreUIDockerCard';
@@ -11,6 +12,8 @@ import ExtensionRuntimeLoadingView, { buildExtensionRuntimeLoadingSteps } from '
 import StandByScreen from '../StandByScreen';
 import CoreUIPipelinePreview from '../CoreUIPipelinePreview';
 import ExtensionRuntimeModelCard from '../extensionRuntimeTab/ExtensionRuntimeModelCard';
+import PerformanceAreaChart from '../PerformanceAreaChart';
+import '../../styles/components/PerformanceDetails.css';
 
 
 export default function DataShowcase() {
@@ -215,14 +218,68 @@ return docker.ensure_container(spec)`}</pre>
 
       <ShowcaseSection title="Data & Feedback Patterns">
         <ShowcaseItem
+          name="Performance details"
+          classes={[".perf-tm", ".perf-tm__rail-item", ".perf-tm-chart"]}
+          source={`${sourceRoot}/components/PerformanceDetailsSubtab.jsx, ${sourceRoot}/styles/components/PerformanceDetails.css`}
+          description="Task Manager-style live telemetry: resource rail, area charts, and the ChironAI process/container table."
+        >
+          <div className="perf-tm coreui-showcase-perf-tm" data-resource="app">
+            <div className="perf-tm__rail" role="tablist" aria-label="Resources">
+              <button type="button" className="perf-tm__rail-item perf-tm__rail-item--memory" role="tab" aria-selected="false">
+                <span className="perf-tm__rail-copy">
+                  <span className="perf-tm__rail-label">Memory</span>
+                  <span className="perf-tm__rail-value">19.2/31.8 GB (60%)</span>
+                </span>
+              </button>
+              <button type="button" className="perf-tm__rail-item perf-tm__rail-item--app is-selected" role="tab" aria-selected="true">
+                <span className="perf-tm__rail-copy">
+                  <span className="perf-tm__rail-label">ChironAI</span>
+                  <span className="perf-tm__rail-value">1.9 GB · Host 0.7 GB</span>
+                </span>
+              </button>
+            </div>
+            <div className="perf-tm__main" role="tabpanel">
+              <header className="perf-tm__heading">
+                <h3>ChironAI</h3>
+                <span>1.9 GB</span>
+              </header>
+              <div className="perf-tm__charts">
+                <div className="perf-tm__chart-block">
+                  <div className="perf-tm__chart-label">Host 0.7 GB</div>
+                  <PerformanceAreaChart data={[0.4, 0.5, 0.62, 0.7, 0.68, 0.71]} color="#0F9D9A" height={96} ariaLabel="Host RAM preview" />
+                </div>
+                <div className="perf-tm__chart-block">
+                  <div className="perf-tm__chart-label">Docker 1.2 GB</div>
+                  <PerformanceAreaChart data={[0.9, 1.0, 1.15, 1.2, 1.18, 1.22]} color="#0078D4" height={96} ariaLabel="Docker RAM preview" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </ShowcaseItem>
+        <ShowcaseItem
           name="Metric card"
           classes={[".metric-card", ".metric-label", ".metric-value"]}
           source={`${sourceRoot}/styles/layout.css`}
-          description="Small dashboard telemetry surface for dense status readouts."
+          description="Small dashboard telemetry surface for dense status readouts. Header pills use this pattern for CPU, GPU, RAM, and the Details jump."
         >
+          <Card className="metric-card">
+            <span className="metric-label">CPU</span>
+            <span className="metric-value">18%</span>
+          </Card>
           <Card className="metric-card">
             <span className="metric-label">GPU util</span>
             <span className="metric-value">42%</span>
+          </Card>
+          <Card className="metric-card">
+            <span className="metric-label">RAM</span>
+            <span className="metric-value">16.7/32.0 GB</span>
+          </Card>
+          <Card className="metric-card">
+            <span className="metric-label">ChironAI</span>
+            <span className="metric-value">1.2 GB</span>
+          </Card>
+          <Card className="metric-card metric-card--action">
+            <span className="metric-label">Details</span>
           </Card>
         </ShowcaseItem>
 
@@ -338,6 +395,24 @@ return docker.ensure_container(spec)`}</pre>
               </div>
             </div>
           </div>
+        </ShowcaseItem>
+
+        <ShowcaseItem
+          name="Journal fetched URLs"
+          classes={[".coreui-list-tight", ".coreui-text-break-all"]}
+          source={`${sourceRoot}/components/FetchedUrlList.jsx, ${sourceRoot}/utils/journalFetchedUrls.js`}
+          description="Bottom-of-log URL list in RAG Fusion Journal request detail, showing where web_search / web_extract went this turn."
+        >
+          <JournalFetchedUrlList
+            meta={{
+              url_fetch_count: 3,
+              url_fetch_urls: [
+                'https://example.com/docs',
+                'https://en.wikipedia.org/wiki/Acetaldehyde',
+                'https://pubmed.ncbi.nlm.nih.gov/12345',
+              ],
+            }}
+          />
         </ShowcaseItem>
       </ShowcaseSection>
     </>

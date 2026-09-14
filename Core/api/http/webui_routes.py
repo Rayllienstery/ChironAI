@@ -65,6 +65,7 @@ from api.http.webui_llm_proxy_routes import register_llm_proxy_routes
 from api.http.webui_model_tester_routes import register_model_tester_routes
 from api.http.webui_observability_routes import register_observability_routes
 from api.http.webui_performance_routes import register_performance_routes
+from api.http.webui_phone_host_routes import register_phone_host_routes
 from api.http.webui_prompt_routes import register_prompt_routes
 from api.http.webui_provider_helpers import (
     default_llm_provider_id as _default_llm_provider_id,
@@ -140,6 +141,7 @@ register_settings_routes(
 register_llm_proxy_routes(webui_bp, error_log=_ERROR_LOG)
 register_crawler_routes(webui_bp, error_log=_ERROR_LOG)
 register_performance_routes(webui_bp)
+register_phone_host_routes(webui_bp)
 register_testing_routes(
     webui_bp,
     error_log=_ERROR_LOG,

@@ -1,0 +1,27 @@
+# Directed Wake-on-LAN from the always-on router.
+# iPhone Shortcuts cannot send UDP. WireGuard also does not forward broadcasts.
+# Target this PC: MAC 74:56:3C:36:A3:76  IP 192.168.50.115
+# Put a static DHCP reservation and a static ARP binding on the router first.
+#
+# Open WebUI door (LAN/WireGuard only, never WAN):
+#   python3 owui-door.py          # scripts/phone_host/owui-door.py
+#   busybox httpd + owui-door.cgi # scripts/phone_host/router/owui-door.cgi
+# iPhone bookmark: http://192.168.50.1:9377/
+
+# --- Keenetic RCI (HTTPS to the router, from the phone on WireGuard) ---
+# curl -k -u admin:PASSWORD -H "Content-Type: application/json" -X POST https://192.168.50.1/rci/ \
+#   --data "{\"ip\":{\"hotspot\":{\"wake\":{\"mac\":\"74:56:3c:36:a3:76\"}}}}"
+
+# --- Keenetic on-router (Entware / SSH, no password) ---
+# ndmc -c "ip hotspot wake mac 74:56:3c:36:a3:76"
+
+# --- OpenWrt (SSH to the router) ---
+# etherwake -i br-lan 74:56:3C:36:A3:76
+# # or: wol 74:56:3C:36:A3:76
+
+# --- MikroTik ---
+# /tool wol mac=74:56:3C:36:A3:76 interface=bridge
+
+# --- Generic Linux gateway ---
+# wakeonlan 74:56:3C:36:A3:76
+# python -c "import socket; m=bytes.fromhex('74563C36A376'); p=b'\\xff'*6+m*16; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); s.sendto(p,('192.168.50.115',9))"

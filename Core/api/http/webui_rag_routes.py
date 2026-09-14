@@ -523,6 +523,18 @@ def register_rag_qdrant_routes(
             "running": bool(provider_health.get("ok")) if isinstance(provider_health, dict) else False
         }
         payload["gpu"] = _get_gpu_metrics()
+        try:
+            from application.host_memory import collect_ram_metrics
+
+            payload["ram"] = collect_ram_metrics()
+        except Exception:
+            payload["ram"] = None
+        try:
+            from application.host_cpu import sample_system_cpu_pct
+
+            payload["cpu"] = {"utilization_pct": sample_system_cpu_pct()}
+        except Exception:
+            payload["cpu"] = None
         payload["proxy_status"] = get_proxy_status_label()
         payload["latest_request_seconds"] = get_latest_request_seconds()
         payload["latest_request_total_tokens"] = get_latest_request_total_tokens()

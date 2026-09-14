@@ -652,6 +652,27 @@ def get_log_level() -> int:
     return getattr(__import__("logging"), name.upper(), 20)  # 20 = INFO
 
 
+PHONE_STATUS_TOKEN_ENV = "CHIRONAI_PHONE_STATUS_TOKEN"
+PHONE_STATUS_GPU_BUSY_PCT_ENV = "CHIRONAI_PHONE_STATUS_GPU_BUSY_PCT"
+DEFAULT_PHONE_STATUS_GPU_BUSY_PCT = 15
+
+
+def get_phone_status_token() -> str:
+    """Shared secret for off-loopback GET /api/webui/host/phone-status. Empty = loopback only."""
+    return (os.getenv(PHONE_STATUS_TOKEN_ENV) or "").strip()
+
+
+def get_phone_status_gpu_busy_pct() -> int:
+    """GPU utilization percent that counts as generation when no live LLM traces exist."""
+    raw = (os.getenv(PHONE_STATUS_GPU_BUSY_PCT_ENV) or "").strip()
+    if raw:
+        try:
+            return max(0, min(100, int(raw)))
+        except (TypeError, ValueError):
+            pass
+    return DEFAULT_PHONE_STATUS_GPU_BUSY_PCT
+
+
 def get_v1_include_autocomplete_logical_model() -> bool:
     """
     When True, GET /v1/models lists ChironAI-Autocomplete when an Ollama autocomplete model is configured,

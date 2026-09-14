@@ -3,6 +3,7 @@ import { summarizeAgentTraceMeta } from '../utils/agentTraceSummary';
 import { proxyTraceToolLimitWarning } from '../utils/proxyTraceWarnings';
 import AgentTraceSummaryCards from './AgentTraceSummaryCards';
 import Card from './Card';
+import { JournalFetchedUrlList } from './FetchedUrlList';
 import '../styles/components/DashboardTab.css';
 
 function readMetadata(log) {
@@ -267,6 +268,8 @@ function ProxyRequestStructuredBody({ log, meta }) {
           </p>
         </Card>
       )}
+
+      <JournalFetchedUrlList meta={meta} />
     </div>
   );
 }
@@ -406,6 +409,7 @@ export default function ProxyTraceDetailModal({ log, isOpen, onClose }) {
                   )}
                 </div>
               )}
+              <JournalFetchedUrlList meta={meta} />
             </>
           )}
           {!showRaw && !agentTraceStyle && meta && <ProxyRequestStructuredBody log={log} meta={meta} />}

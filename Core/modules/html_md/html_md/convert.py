@@ -21,15 +21,36 @@ except ImportError:
     _HAS_HTML2TEXT = False
 
 
-def html_to_markdown_regex(html: str) -> str:
-    """Fallback regex-based HTML→markdown when lxml is not available."""
+_NOISE_ATTR_RE = re.compile(
+    r"cookie|consent|gdpr|onetrust|cookiebot|cmp-banner|privacy-banner|cc-banner",
+    re.IGNORECASE,
+)
+
+
+def _el_looks_chrome(el) -> bool:
+    blob = " ".join(
+        filter(
+            None,
+            (
+                el.get("id"),
+                el.get("class"),
+                el.get("aria-label"),
+                el.get("role"),
+            ),
+        )
+    )
+    return bool(_NOISE_ATTR_RE.search(blob))
+
+
+def strip_html_chrome(html: str) -> str:
+    """Drop nav/chrome and cookie/consent overlays before markdown conversion."""
     if not html:
         return ""
     html = re.sub(
         r"<(nav|header|footer|aside)[^>]*>.*?</\1>", "", html, flags=re.IGNORECASE | re.DOTALL
     )
     html = re.sub(
-        r"<div[^>]+(nav|navigation|breadcrumb|breadcrumbs|sidebar|toc)[^>]*>.*?</div>",
+        r"<div[^>]+(nav|navigation|breadcrumb|breadcrumbs|sidebar|toc|cookie|consent|gdpr|onetrust)[^>]*>.*?</div>",
         "",
         html,
         flags=re.IGNORECASE | re.DOTALL,
@@ -46,7 +67,21 @@ def html_to_markdown_regex(html: str) -> str:
         html,
         flags=re.IGNORECASE | re.DOTALL,
     )
+    html = re.sub(
+        r"<([a-zA-Z0-9]+)[^>]+(aria-modal=\"true\"|role=\"(dialog|alertdialog)\")[^>]*>.*?</\1>",
+        "",
+        html,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
     html = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", html, flags=re.IGNORECASE | re.DOTALL)
+    return html
+
+
+def html_to_markdown_regex(html: str) -> str:
+    """Fallback regex-based HTML→markdown when lxml is not available."""
+    if not html:
+        return ""
+    html = strip_html_chrome(html)
 
     def _replace_heading(match: re.Match[str]) -> str:
         level, text = match.group(1), match.group(2).strip()
@@ -82,6 +117,12 @@ def html_to_markdown_dom(html: str) -> str:
     for tag in ("script", "style", "nav", "header", "footer", "aside"):
         to_remove.extend(root.iter(tag))
     to_remove.extend(root.xpath("//*[@role='navigation']"))
+    for el in root.xpath("//*[@role='dialog' or @role='alertdialog' or @aria-modal='true']"):
+        if _el_looks_chrome(el):
+            to_remove.append(el)
+    for el in list(root.iter()):
+        if el not in to_remove and _el_looks_chrome(el):
+            to_remove.append(el)
     for el in to_remove:
         parent = el.getparent()
         if parent is not None:
@@ -218,6 +259,7 @@ def html_to_markdown(html: str, prefer_code_preservation: bool = True) -> str:
     """
     if not html:
         return ""
+    html = strip_html_chrome(html)
     if prefer_code_preservation and _HAS_HTML2TEXT:
         md = html_to_markdown_html2text(html)
         if md and len(md.strip()) > 100:
@@ -231,4 +273,5 @@ __all__ = [
     "html_to_markdown_regex",
     "html_to_markdown_dom",
     "html_to_markdown_html2text",
+    "strip_html_chrome",
 ]

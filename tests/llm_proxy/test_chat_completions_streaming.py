@@ -30,6 +30,51 @@ def test_openai_chat_completion_chunk_shape() -> None:
     assert payload["object"] == "chat.completion.chunk"
     assert payload["choices"][0]["delta"] == {"content": "hi"}
     assert payload["choices"][0]["finish_reason"] is None
+    assert "event" not in payload
+
+
+def test_format_owui_usage_status_matches_coreui_chips() -> None:
+    from llm_proxy.chat_completions_streaming import format_owui_usage_status
+
+    assert format_owui_usage_status(
+        completion_tokens=6982,
+        prompt_tokens=7400,
+        num_ctx=131072,
+    ) == "6982 tok · 11%"
+    assert format_owui_usage_status(completion_tokens=12, prompt_tokens=0, num_ctx=None) == "12 tok"
+
+
+def test_iter_sse_from_ollama_stream_events_can_attach_owui_status() -> None:
+    acc = StreamContentAccumulator()
+    events = iter(
+        [
+            ("thinking_delta", "hello"),
+            ("done", {"done_reason": "stop"}),
+        ]
+    )
+
+    def _extra(_visible: str) -> dict[str, Any]:
+        return {
+            "event": {
+                "type": "status",
+                "data": {"description": "12 tok · 11%", "done": False, "hidden": False},
+            }
+        }
+
+    lines = list(
+        iter_sse_from_ollama_stream_events(
+            events,
+            completion_id="cid",
+            client_visible_model="model",
+            include_reasoning_content=False,
+            accumulator=acc,
+            reasoning_guard_limit_chars=50_000,
+            extra_chunk_fields=_extra,
+        )
+    )
+    payload = _parse_sse_data(lines[0])
+    assert payload["event"]["data"]["description"] == "12 tok · 11%"
+    assert payload["choices"][0]["delta"] == {"reasoning_content": "hello"}
 
 
 def test_iter_sse_tool_limit_response_order() -> None:
@@ -65,10 +110,48 @@ def test_iter_sse_from_ollama_stream_events_content_and_done() -> None:
     assert _parse_sse_data(lines[0])["choices"][0]["delta"] == {"content": "hello"}
 
 
-def test_iter_sse_from_ollama_stream_events_reasoning_guard_stops() -> None:
+def test_iter_sse_from_ollama_stream_events_keeps_thinking_until_answer() -> None:
     acc = StreamContentAccumulator()
     long_reasoning = "x" * 100
-    events = iter([("thinking_delta", long_reasoning)])
+    events = iter(
+        [
+            ("thinking_delta", long_reasoning),
+            ("content_delta", "answer"),
+            ("done", {"done_reason": "stop"}),
+        ]
+    )
+    guard_calls: list[str] = []
+
+    lines = list(
+        iter_sse_from_ollama_stream_events(
+            events,
+            completion_id="cid",
+            client_visible_model="model",
+            include_reasoning_content=False,
+            accumulator=acc,
+            reasoning_guard_limit_chars=50,
+            on_reasoning_guard=lambda: guard_calls.append("guard"),
+        )
+    )
+    assert acc.reasoning_guard_triggered is False
+    assert guard_calls == []
+    assert acc.reasoning_content == long_reasoning
+    assert acc.final_content == "answer"
+    assert all(
+        "Error: reasoning-only" not in json.dumps(_parse_sse_data(line).get("choices", [{}])[0].get("delta", {}))
+        for line in lines
+    )
+
+
+def test_iter_sse_from_ollama_stream_events_reasoning_guard_is_trace_only_at_done() -> None:
+    acc = StreamContentAccumulator()
+    long_reasoning = "x" * 100
+    events = iter(
+        [
+            ("thinking_delta", long_reasoning),
+            ("done", {"done_reason": "stop"}),
+        ]
+    )
     guard_calls: list[str] = []
 
     lines = list(
@@ -84,8 +167,9 @@ def test_iter_sse_from_ollama_stream_events_reasoning_guard_stops() -> None:
     )
     assert acc.reasoning_guard_triggered is True
     assert guard_calls == ["guard"]
-    assert len(lines) == 2
-    assert "Error: reasoning-only" in _parse_sse_data(lines[1])["choices"][0]["delta"]["content"]
+    assert acc.final_content == ""
+    assert len(lines) == 1
+    assert _parse_sse_data(lines[0])["choices"][0]["delta"] == {"reasoning_content": long_reasoning}
 
 
 def test_iter_sse_single_shot_includes_tool_calls() -> None:

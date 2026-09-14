@@ -30,12 +30,15 @@ from llm_proxy.chat_completions_response_helpers import (
 from llm_proxy.chat_completions_streaming import (
     StreamContentAccumulator,
     approx_token_count,
+    context_window_tokens_from_trace,
+    format_owui_usage_status,
     iter_sse_finish_with_done,
     iter_sse_from_ollama_stream_events,
     iter_sse_plain_content_response,
     iter_sse_single_shot_assistant,
     iter_sse_tool_calls_response,
     iter_sse_tool_limit_response,
+    owui_usage_status_event,
     reasoning_guard_limit_from_env,
     sse_content_chunk,
     sse_role_assistant_chunk,
@@ -72,17 +75,54 @@ def _spawn_stream_finalize(fn: Callable[[], None]) -> None:
 
 
 _LIVE_STREAM_TOKEN_INTERVAL_SEC = 0.2
+_OWUI_STATUS_MIN_INTERVAL_SEC = 1.0
+_OWUI_STATUS_TOKEN_STEP = 500
+
+
+def _seed_live_prompt_tokens(trace: dict[str, Any], prompt_tokens: int) -> None:
+    ollama = trace.get("ollama")
+    if not isinstance(ollama, dict):
+        ollama = {}
+        trace["ollama"] = ollama
+    estimates = ollama.get("tokens_estimates")
+    if not isinstance(estimates, dict):
+        estimates = {}
+        ollama["tokens_estimates"] = estimates
+    prompt_n = max(0, int(prompt_tokens))
+    estimates["prompt_tokens_estimated"] = prompt_n
+    completion_raw = estimates.get("completion_tokens_estimated")
+    try:
+        completion_n = int(completion_raw) if completion_raw is not None else 0
+    except (TypeError, ValueError):
+        completion_n = 0
+    estimates["total_tokens_estimated"] = prompt_n + max(0, completion_n)
 
 
 class _LiveStreamTokenReporter:
     """Throttle live completion-token patches so CoreUI can poll at 5 Hz."""
 
-    def __init__(self, w: Any, trace: dict[str, Any], *, enabled: bool) -> None:
-        self._fn = getattr(w, "update_live_stream_progress", None) if enabled else None
+    def __init__(
+        self,
+        w: Any,
+        trace: dict[str, Any],
+        *,
+        enabled: bool,
+        prompt_tokens: int | None = None,
+    ) -> None:
+        self._enabled = bool(enabled)
+        self._fn = getattr(w, "update_live_stream_progress", None) if self._enabled else None
         self._trace_id = str((trace or {}).get("trace_id") or "")
         self._last_mono = 0.0
         self._last_tokens = -1
         self._last_tail = None
+        self._prompt_tokens = max(0, int(prompt_tokens)) if prompt_tokens is not None else None
+        self._owui_num_ctx = context_window_tokens_from_trace(trace)
+        self._owui_last_label = None
+        self._owui_last_percent = None
+        self._owui_last_tokens = -1
+        self._owui_last_mono = 0.0
+        if self._prompt_tokens is not None and isinstance(trace, dict):
+            _seed_live_prompt_tokens(trace, self._prompt_tokens)
 
     def _publish(self, visible_text: str) -> None:
         if not callable(self._fn):
@@ -95,13 +135,16 @@ class _LiveStreamTokenReporter:
             return
         self._last_tokens = tokens
         self._last_tail = tail
+        kwargs: dict[str, Any] = {
+            "trace_id": self._trace_id,
+            "completion_tokens": tokens,
+            "visible_tail": tail,
+            "visible_tail_truncated": truncated,
+        }
+        if self._prompt_tokens is not None:
+            kwargs["prompt_tokens"] = self._prompt_tokens
         try:
-            self._fn(
-                trace_id=self._trace_id,
-                completion_tokens=tokens,
-                visible_tail=tail,
-                visible_tail_truncated=truncated,
-            )
+            self._fn(**kwargs)
         except Exception:
             _RAG_LOG.debug("live stream token progress update failed", exc_info=True)
 
@@ -121,6 +164,47 @@ class _LiveStreamTokenReporter:
         self._last_tokens = -1
         self._last_tail = None
         self._publish(visible_text)
+
+    def extra_chunk_fields(self, visible_text: str) -> dict[str, Any]:
+        """Attach Open WebUI status + usage when the displayed label should change.
+
+        Open WebUI appends every status event to chat history, so this is
+        throttled to percent changes or 500-token steps — not the 5 Hz CoreUI poll.
+        """
+        text = visible_text or ""
+        completion = approx_token_count(text) if text else 0
+        prompt = self._prompt_tokens if self._prompt_tokens is not None else 0
+        label = format_owui_usage_status(
+            completion_tokens=completion,
+            prompt_tokens=prompt,
+            num_ctx=self._owui_num_ctx,
+        )
+        percent_key = None
+        if self._owui_num_ctx and self._owui_num_ctx > 0:
+            percent_key = int(round(((prompt + completion) / self._owui_num_ctx) * 100))
+        now = time.monotonic()
+        first = self._owui_last_label is None
+        percent_changed = percent_key is not None and percent_key != self._owui_last_percent
+        token_step = (
+            completion - self._owui_last_tokens >= _OWUI_STATUS_TOKEN_STEP
+            and (now - self._owui_last_mono) >= _OWUI_STATUS_MIN_INTERVAL_SEC
+        )
+        if not first and not percent_changed and not token_step:
+            return {}
+        if not first and label == self._owui_last_label:
+            return {}
+        self._owui_last_label = label
+        self._owui_last_percent = percent_key
+        self._owui_last_tokens = completion
+        self._owui_last_mono = now
+        return {
+            "usage": {
+                "prompt_tokens": prompt,
+                "completion_tokens": completion,
+                "total_tokens": prompt + completion,
+            },
+            "event": owui_usage_status_event(label, done=False),
+        }
 
 
 @dataclass(frozen=True)
@@ -279,7 +363,14 @@ def iter_native_tools_sse_stream(ctx: NativeToolsStreamContext) -> Iterator[str]
     total_tokens_holder = [0]
 
     yield sse_role_assistant_chunk(oid, ctx.client_visible_model)
-    live_tokens = _LiveStreamTokenReporter(ctx.w, ctx.trace, enabled=not ctx.private_build)
+    live_tokens = _LiveStreamTokenReporter(
+        ctx.w,
+        ctx.trace,
+        enabled=not ctx.private_build,
+        prompt_tokens=estimate_prompt_tokens_from_messages_json(
+            ctx.native_ollama_messages_for_upstream,
+        ),
+    )
     live_tokens.flush("")
 
     def _on_reasoning_guard() -> None:
@@ -312,6 +403,7 @@ def iter_native_tools_sse_stream(ctx: NativeToolsStreamContext) -> Iterator[str]
             upstream_model=ctx.use_model,
             trace=ctx.trace,
             on_visible_progress=live_tokens.observe,
+            extra_chunk_fields=live_tokens.extra_chunk_fields,
         )
     except Exception as exc:
         if not ctx.private_build:
@@ -540,7 +632,12 @@ def iter_standard_sse_stream(ctx: StandardStreamContext) -> Iterator[str]:
     total_tokens_holder = [0]
 
     yield sse_role_assistant_chunk(oid, ctx.client_visible_model)
-    live_tokens = _LiveStreamTokenReporter(ctx.w, ctx.trace, enabled=not ctx.private_build)
+    live_tokens = _LiveStreamTokenReporter(
+        ctx.w,
+        ctx.trace,
+        enabled=not ctx.private_build,
+        prompt_tokens=estimate_prompt_tokens_from_ollama_messages(ctx.ollama_messages),
+    )
     live_tokens.flush("")
 
     def _on_reasoning_guard() -> None:
@@ -571,6 +668,7 @@ def iter_standard_sse_stream(ctx: StandardStreamContext) -> Iterator[str]:
             upstream_model=ctx.use_model,
             trace=ctx.trace,
             on_visible_progress=live_tokens.observe,
+            extra_chunk_fields=live_tokens.extra_chunk_fields,
         )
     except Exception as exc:
         if not ctx.private_build:

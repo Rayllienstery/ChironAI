@@ -208,18 +208,12 @@ def build_standard_nonstream_response(
             if tool_loop_limit_message:
                 _append_trace_warning(ctx.trace, "tool_loop_limit_response_guarded")
                 content = tool_loop_limit_message
-            else:
-                _append_trace_warning(ctx.trace, "reasoning_only_response_guarded")
-                content = (
-                    "[Error: model returned reasoning without final answer. "
-                    "Try disabling thinking or shortening the prompt.]"
-                )
-            content_parts = {
-                "visible_content": f"{content_parts.get('visible_content') or ''}\n\n{content}".strip(),
-                "reasoning_content": str(content_parts.get("reasoning_content") or ""),
-                "final_content": content,
-                "ollama_payload": content_parts.get("ollama_payload") if isinstance(content_parts, dict) else {},
-            }
+                content_parts = {
+                    "visible_content": f"{content_parts.get('visible_content') or ''}\n\n{content}".strip(),
+                    "reasoning_content": str(content_parts.get("reasoning_content") or ""),
+                    "final_content": content,
+                    "ollama_payload": content_parts.get("ollama_payload") if isinstance(content_parts, dict) else {},
+                }
         budget_exhausted = _output_budget_is_exhausted(
             ctx.trace,
             content_parts.get("ollama_payload") if isinstance(content_parts, dict) else None,

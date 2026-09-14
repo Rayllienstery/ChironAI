@@ -245,10 +245,13 @@ def _assistant_tool_names_by_id(messages: list[Any]) -> dict[str, str]:
     return mapping
 
 
-def count_web_source_urls_from_messages(messages: list[Any] | None) -> int:
+_WEB_SOURCE_URL_STORE_CAP = 50
+
+
+def collect_web_source_urls_from_messages(messages: list[Any] | None) -> list[str]:
     """Unique http(s) URLs from this turn's web_search / web_extract tool results."""
     if not isinstance(messages, list):
-        return 0
+        return []
     last_user = -1
     for index, message in enumerate(messages):
         if isinstance(message, dict) and message.get("role") == "user":
@@ -256,16 +259,15 @@ def count_web_source_urls_from_messages(messages: list[Any] | None) -> int:
     turn = messages[last_user + 1 :] if last_user >= 0 else messages
     id_to_name = _assistant_tool_names_by_id(messages)
     seen: set[str] = set()
-    count = 0
+    urls: list[str] = []
 
     def _add(obj: Any, *, allow_bare_strings: bool = False) -> None:
-        nonlocal count
         for url in _iter_web_source_urls(obj, allow_bare_strings=allow_bare_strings):
             key = url.rstrip("/").lower()
             if key in seen:
                 continue
             seen.add(key)
-            count += 1
+            urls.append(url)
 
     for message in turn:
         if not isinstance(message, dict):
@@ -283,22 +285,31 @@ def count_web_source_urls_from_messages(messages: list[Any] | None) -> int:
             continue
         if _looks_like_web_payload(parsed):
             _add(parsed)
-    return count
+    return urls
+
+
+def count_web_source_urls_from_messages(messages: list[Any] | None) -> int:
+    """Unique http(s) URL count from this turn's web_search / web_extract tool results."""
+    return len(collect_web_source_urls_from_messages(messages))
 
 
 def attach_url_fetch_count(trace: dict[str, Any], messages: list[Any] | None) -> int:
-    """Store this turn's web URL count on the live trace. Returns 0 when unused."""
-    count = count_web_source_urls_from_messages(messages)
+    """Store this turn's web URL count and list on the live trace. Returns 0 when unused."""
+    urls = collect_web_source_urls_from_messages(messages)
+    count = len(urls)
     request = trace.setdefault("request", {})
     if not isinstance(request, dict):
         request = {}
         trace["request"] = request
     if count:
+        stored = urls[:_WEB_SOURCE_URL_STORE_CAP]
         request["url_fetch_count"] = count
+        request["url_fetch_urls"] = stored
         internet = trace.get("internet")
         if not isinstance(internet, dict):
             internet = {}
             trace["internet"] = internet
         internet["url_fetch_count"] = count
+        internet["url_fetch_urls"] = list(stored)
     return count
 

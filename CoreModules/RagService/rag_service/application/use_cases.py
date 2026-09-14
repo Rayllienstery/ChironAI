@@ -52,7 +52,10 @@ from rag_service.infrastructure.openai_multipart_vision import (
     collect_ollama_images_b64_from_parts,
     openai_parts_to_flat_text,
 )
-from rag_service.infrastructure.openai_ollama_tool_bridge import openai_messages_to_ollama
+from rag_service.infrastructure.openai_ollama_tool_bridge import (
+    fold_instruction_messages_for_ollama,
+    openai_messages_to_ollama,
+)
 
 _rag_log = logging.getLogger("trag.rag")
 
@@ -449,6 +452,7 @@ def answer_question(
             if role == "user" and images:
                 msg["images"] = images
             ollama_messages.append(msg)
+    ollama_messages = fold_instruction_messages_for_ollama(ollama_messages)
     model = request.model or model_name
     content = chat_client.chat(ollama_messages, model, stream=False, options=None)
     return RagAnswerResponse(content=content, model=model, finish_reason="stop")
@@ -516,6 +520,7 @@ def prepare_ollama_messages(
     if native_tools:
         raw_msgs = [m for m in request.messages if isinstance(m, dict)]
         ollama_messages.extend(openai_messages_to_ollama(raw_msgs))
+        ollama_messages = fold_instruction_messages_for_ollama(ollama_messages)
         model = request.model or model_name
         return ollama_messages, model
 
@@ -581,7 +586,7 @@ def prepare_ollama_messages(
             text = content if isinstance(content, str) else json.dumps(content, ensure_ascii=False)
             ollama_messages.append({"role": "user", "content": f"[tool_result:{name}] {text}"})
     model = request.model or model_name
-    return ollama_messages, model
+    return fold_instruction_messages_for_ollama(ollama_messages), model
 
 
 __all__ = [

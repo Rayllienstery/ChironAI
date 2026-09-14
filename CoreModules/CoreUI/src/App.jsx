@@ -106,6 +106,7 @@ const LAZY_MODULES = {
   HelpTab: () => import("./components/help/HelpTab"),
   ProvidersTab: () => import("./components/providers/ProvidersTab"),
   AboutTab: () => import("./components/AboutTab"),
+  PhoneHostTab: () => import("./components/PhoneHostTab"),
 };
 
 const TAB_MODULE_KEYS = {
@@ -127,6 +128,7 @@ const TAB_MODULE_KEYS = {
   help: "HelpTab",
   providers: "ProvidersTab",
   about: "AboutTab",
+  "phone-host": "PhoneHostTab",
 };
 
 const IDLE_PREFETCH_TAB_IDS = [
@@ -139,6 +141,7 @@ const IDLE_PREFETCH_TAB_IDS = [
   "testing",
   "docker",
   "tokens-security",
+  "phone-host",
   "extensions",
   "template-editor",
   "dependencies",
@@ -177,6 +180,7 @@ const TokensSecurityTab = lazyWithRetry("TokensSecurityTab", LAZY_MODULES.Tokens
 const HelpTab = lazyWithRetry("HelpTab", LAZY_MODULES.HelpTab);
 const ProvidersTab = lazyWithRetry("ProvidersTab", LAZY_MODULES.ProvidersTab);
 const AboutTab = lazyWithRetry("AboutTab", LAZY_MODULES.AboutTab);
+const PhoneHostTab = lazyWithRetry("PhoneHostTab", LAZY_MODULES.PhoneHostTab);
 
 import DockerTabIcon from "./assets/docker-mark.svg?url";
 import Card from "./components/Card";
@@ -204,6 +208,7 @@ import NotificationCenterShell from "./components/NotificationCenterShell";
 import RagTestRunNotificationBridge from "./components/RagTestRunNotificationBridge";
 import ProxiesLiveNotificationBridge from "./components/ProxiesLiveNotificationBridge";
 import InfrastructureAlertsBridge from "./components/InfrastructureAlertsBridge";
+import DockerEngineNotificationBridge from "./components/DockerEngineNotificationBridge";
 import WelcomeNotificationBridge from "./components/WelcomeNotificationBridge";
 import ExtensionSecurityNotificationBridge from "./components/ExtensionSecurityNotificationBridge";
 import DashboardTab from "./components/DashboardTab";
@@ -320,10 +325,14 @@ function App() {
   const [extensionTabs, setExtensionTabs] = useState([]);
   const [extensionServiceStatusByTabId, setExtensionServiceStatusByTabId] = useState({});
   const [metricsHistory, setMetricsHistory] = useState({
+    cpu_util: [],
     gpu_util: [],
     gpu_mem_used: [],
     gpu_temp: [],
+    ram_used: [],
+    app_ram: [],
   });
+  const [performanceOpenToken, setPerformanceOpenToken] = useState(0);
   const shellRequestDelayMs =
     activeTab === "performance"
       ? PERFORMANCE_SHELL_REQUEST_DELAY_MS
@@ -561,6 +570,11 @@ function App() {
         setDashboardMetrics(m);
         setMetricsHistory((prev) => {
           const next = { ...prev };
+          if (m.cpu?.utilization_pct != null) {
+            next.cpu_util = [...prev.cpu_util, m.cpu.utilization_pct].slice(
+              -METRICS_HISTORY_LEN,
+            );
+          }
           if (m.gpu?.utilization_pct != null) {
             next.gpu_util = [...prev.gpu_util, m.gpu.utilization_pct].slice(
               -METRICS_HISTORY_LEN,
@@ -574,6 +588,16 @@ function App() {
           }
           if (m.gpu?.temperature_c != null) {
             next.gpu_temp = [...prev.gpu_temp, m.gpu.temperature_c].slice(
+              -METRICS_HISTORY_LEN,
+            );
+          }
+          if (m.ram?.system_used_gb != null) {
+            next.ram_used = [...prev.ram_used, m.ram.system_used_gb].slice(
+              -METRICS_HISTORY_LEN,
+            );
+          }
+          if (m.ram?.app_gb != null) {
+            next.app_ram = [...prev.app_ram, m.ram.app_gb].slice(
               -METRICS_HISTORY_LEN,
             );
           }
@@ -806,6 +830,7 @@ function App() {
     { id: "dashboard", label: t("nav.dashboard") },
     { id: "docker", label: t("nav.docker"), iconUrl: DockerTabIcon },
     { id: "tokens-security", label: t("nav.tokens_security") },
+    { id: "phone-host", label: t("nav.phone_host"), icon: "smartphone" },
     { id: "logs", label: t("nav.logs") },
     { id: "dependencies", label: t("nav.dependencies") },
     { id: "help", label: t("nav.help"), icon: "help" },
@@ -894,7 +919,7 @@ function App() {
       case "dev-documentation":
         return <DevDocumentationTab />;
       case "performance":
-        return <PerformanceTab />;
+        return <PerformanceTab key={performanceOpenToken} />;
       case "swagger":
         return <SwaggerTab />;
       case "testing":
@@ -918,6 +943,8 @@ function App() {
         return <DockerTab />;
       case "tokens-security":
         return <TokensSecurityTab />;
+      case "phone-host":
+        return <PhoneHostTab />;
       case "rag":
         return (
           <RagTab
@@ -1019,6 +1046,46 @@ function App() {
         <header className="app-header">
           {sessionId && (
             <div className="app-header-metrics">
+            {dashboardMetrics?.cpu != null && (
+              <Card className="metric-card">
+                <span className="metric-label">{t("app.metrics.cpu")}</span>
+                <span className="metric-value">
+                  {dashboardMetrics.cpu.utilization_pct != null
+                    ? `${dashboardMetrics.cpu.utilization_pct}%`
+                    : "—"}
+                </span>
+                <Sparkline data={metricsHistory.cpu_util} />
+              </Card>
+            )}
+            {dashboardMetrics?.ram != null && (
+              <>
+                <Card
+                  className="metric-card"
+                  title={`${dashboardMetrics.ram.system_used_gb} / ${dashboardMetrics.ram.system_total_gb} GB`}
+                >
+                  <span className="metric-label">{t("app.metrics.ram")}</span>
+                  <span className="metric-value">
+                    {dashboardMetrics.ram.system_used_gb != null &&
+                    dashboardMetrics.ram.system_total_gb != null
+                      ? `${dashboardMetrics.ram.system_used_gb}/${dashboardMetrics.ram.system_total_gb} GB`
+                      : "—"}
+                  </span>
+                  <Sparkline data={metricsHistory.ram_used} />
+                </Card>
+                <Card
+                  className="metric-card"
+                  title={`${t("app.metrics.ram_host")} ${((dashboardMetrics.ram.app_host_bytes || 0) / 1024 ** 3).toFixed(2)} GB · ${t("app.metrics.ram_docker")} ${((dashboardMetrics.ram.app_containers_bytes || 0) / 1024 ** 3).toFixed(2)} GB`}
+                >
+                  <span className="metric-label">{t("app.metrics.ram_app")}</span>
+                  <span className="metric-value">
+                    {dashboardMetrics.ram.app_gb != null
+                      ? `${dashboardMetrics.ram.app_gb} GB`
+                      : "—"}
+                  </span>
+                  <Sparkline data={metricsHistory.app_ram} />
+                </Card>
+              </>
+            )}
             {dashboardMetrics?.gpu != null && (
               <>
                 <Card className="metric-card">
@@ -1051,6 +1118,20 @@ function App() {
                 </Card>
               </>
             )}
+            <Card
+              as="button"
+              type="button"
+              className="metric-card metric-card--action"
+              interactive
+              onClick={() => {
+                setPerformanceOpenToken((token) => token + 1);
+                setActiveTab("performance");
+              }}
+              aria-label={t("app.metrics.details")}
+              title={t("app.metrics.details")}
+            >
+              <span className="metric-label">{t("app.metrics.details")}</span>
+            </Card>
             <div className="app-header-end">
               <SupportUkraineBanner compact />
               {appVersion && (
@@ -1133,6 +1214,9 @@ function App() {
       )}
       {sessionId && (
         <InfrastructureAlertsBridge pollIntervalSec={serviceStatusPollIntervalSec} />
+      )}
+      {sessionId && (
+        <DockerEngineNotificationBridge pollIntervalSec={serviceStatusPollIntervalSec} />
       )}
       {sessionId && <ExtensionSecurityNotificationBridge />}
       {sessionId && <WelcomeNotificationBridge />}

@@ -16,6 +16,8 @@ import {
   modelIsHidden,
   normalizeModelDetailsForModal,
   serviceActionIcon,
+  servicePanelFieldKey,
+  servicePanelMetaColumns,
 } from './extensionRuntimeTabUtils';
 import { useExtensionRuntimeActions } from './useExtensionRuntimeActions';
 import { useExtensionRuntimeTab } from './useExtensionRuntimeTab';
@@ -235,6 +237,11 @@ export default function ExtensionRuntimeTab({
   const contentFields = Array.isArray(content?.fields) ? content.fields as Record<string, unknown>[] : [];
   const contentActions = Array.isArray(content?.actions) ? content.actions as Record<string, unknown>[] : [];
   const contentDetails = Array.isArray(content?.details) ? content.details as Record<string, unknown>[] : [];
+  const contentService = (content?.service && typeof content.service === 'object')
+    ? content.service as Record<string, unknown>
+    : null;
+  const serviceFieldKey = servicePanelFieldKey(contentService);
+  const serviceMetaColumns = servicePanelMetaColumns(contentService);
   const contentStatus = tab.payload?.status && typeof tab.payload.status === 'object'
     ? tab.payload.status as Record<string, unknown>
     : null;
@@ -352,28 +359,30 @@ export default function ExtensionRuntimeTab({
         </section>
       ) : null}
 
-      {isServicePanelContent && content?.service ? (
+      {isServicePanelContent && contentService ? (
         <section className="llm-proxy-section-gap">
           <CoreUIDockerCard
-            name={String((content.service as Record<string, unknown>).name || content.title || tab.payload?.title || title || extensionId)}
-            description={(content.service as Record<string, unknown>).subtitle as string || content.subtitle as string}
-            icon={String((content.service as Record<string, unknown>).icon || 'deployed_code')}
-            iconUrl={String((content.service as Record<string, unknown>).iconUrl || tab.payload?.icon_url || '')}
-            status={(content.service as Record<string, unknown>).status as { tone?: string; label: string }}
-            httpStatus={(content.service as Record<string, unknown>).httpStatus as string}
-            fieldKey={String((content.service as Record<string, unknown>).fieldKey || 'backend_url')}
+            name={String(contentService.name || content.title || tab.payload?.title || title || extensionId)}
+            description={contentService.subtitle as string || content.subtitle as string}
+            icon={String(contentService.icon || 'deployed_code')}
+            iconUrl={String(contentService.iconUrl || tab.payload?.icon_url || '')}
+            status={contentService.status as { tone?: string; label: string }}
+            httpStatus={contentService.httpStatus as string}
+            fieldKey={serviceFieldKey}
+            metaColumns={serviceMetaColumns}
             busyActionId={busyActionId}
             activeAction={activeAction ?? undefined}
             actionTimerNow={actionTimerNow}
             service={{
-              iconUrl: String((content.service as Record<string, unknown>).iconUrl || tab.payload?.icon_url || ''),
-              backendUrl: tab.fieldState[String((content.service as Record<string, unknown>).fieldKey || 'backend_url')]
-                ?? String((content.service as Record<string, unknown>).backendUrl ?? ''),
-              backendUrlLabel: (content.service as Record<string, unknown>).backendUrlLabel,
-              backendUrlPlaceholder: (content.service as Record<string, unknown>).backendUrlPlaceholder,
-              httpStatus: (content.service as Record<string, unknown>).httpStatus,
-              status: (content.service as Record<string, unknown>).status,
-              actions: ((content.service as Record<string, unknown>).actions as Record<string, unknown>[] || []).map((action) => ({
+              iconUrl: String(contentService.iconUrl || tab.payload?.icon_url || ''),
+              backendUrl: tab.fieldState[serviceFieldKey]
+                ?? String(contentService.backendUrl ?? ''),
+              backendUrlLabel: contentService.backendUrlLabel,
+              backendUrlPlaceholder: contentService.backendUrlPlaceholder,
+              httpStatus: contentService.httpStatus,
+              status: contentService.status,
+              metaColumns: serviceMetaColumns,
+              actions: ((contentService.actions as Record<string, unknown>[]) || []).map((action) => ({
                 id: action.id,
                 label: action.label,
                 variant: action.variant,
@@ -383,13 +392,14 @@ export default function ExtensionRuntimeTab({
                 payload_keys: action.payload_keys,
                 onAction: () => void handleContentAction(action),
               })),
-              meta: (content.service as Record<string, unknown>).meta || [],
+              meta: contentService.meta || [],
               onBackendUrlChange: (value: string) => {
-                const fk = String((content.service as Record<string, unknown>).fieldKey || 'backend_url');
-                tab.setFieldState((prev) => ({ ...prev, [fk]: value }));
+                if (!serviceFieldKey) return;
+                tab.setFieldState((prev) => ({ ...prev, [serviceFieldKey]: value }));
               },
               onBackendUrlBlur: (_value: string, key?: string) => {
-                const fk = key || String((content.service as Record<string, unknown>).fieldKey || 'backend_url');
+                const fk = key || serviceFieldKey;
+                if (!fk) return undefined;
                 const autosaveActionId = String(
                   contentFields.find((f) => String(f.key) === fk)?.autosave_action_id || 'save_backend',
                 );
@@ -401,7 +411,7 @@ export default function ExtensionRuntimeTab({
         </section>
       ) : null}
 
-      {isServicePanelContent && !content?.service ? (
+      {isServicePanelContent && !contentService ? (
         <section className="app-default-card llm-proxy-section-gap extensions-runtime-service-shell">
           <div className="extensions-runtime-service-header">
             <div className="extensions-runtime-service-title-row">

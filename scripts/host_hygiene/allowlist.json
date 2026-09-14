@@ -1,0 +1,242 @@
+{
+  "lanCidr": "192.168.50.0/24",
+  "lanHost": "192.168.50.115",
+  "routerHost": "192.168.50.1",
+  "wireguardLanCidrs": [
+    "10.6.0.0/24"
+  ],
+  "otherTrustedCidrs": [
+    "192.168.1.0/24"
+  ],
+  "vpnCidrs": [
+    "100.64.0.0/10",
+    "172.21.22.0/23"
+  ],
+  "vpnAdapterNameContains": [
+    "PrivadoVPN"
+  ],
+  "expectedListeners": [
+    {
+      "port": 21118,
+      "protocol": "TCP",
+      "process": "rustdesk",
+      "scope": "wildcard",
+      "note": "Direct IP; firewall must stay LAN-only"
+    },
+    {
+      "port": 21119,
+      "protocol": "UDP",
+      "process": "rustdesk",
+      "scope": "wildcard",
+      "note": "RustDesk LAN UDP"
+    },
+    {
+      "port": 47984,
+      "protocol": "TCP",
+      "process": "sunshine",
+      "scope": "wildcard",
+      "note": "Moonlight HTTPS"
+    },
+    {
+      "port": 47989,
+      "protocol": "TCP",
+      "process": "sunshine",
+      "scope": "wildcard",
+      "note": "Moonlight HTTP"
+    },
+    {
+      "port": 47990,
+      "protocol": "TCP",
+      "process": "sunshine",
+      "scope": "wildcard",
+      "note": "Sunshine Web UI — should not be internet-facing"
+    },
+    {
+      "port": 48010,
+      "protocol": "TCP",
+      "process": "sunshine",
+      "scope": "wildcard",
+      "note": "Moonlight video"
+    },
+    {
+      "port": 27036,
+      "protocol": "TCP",
+      "process": "steam",
+      "scope": "wildcard",
+      "note": "Steam local streaming"
+    },
+    {
+      "port": 27036,
+      "protocol": "UDP",
+      "process": "steam",
+      "scope": "any",
+      "note": "Steam local streaming"
+    },
+    {
+      "port": 55161,
+      "protocol": "TCP",
+      "process": "qbittorrent",
+      "scope": "vpn",
+      "note": "Torrent client bound to PrivadoVPN on purpose"
+    },
+    {
+      "port": 55161,
+      "protocol": "UDP",
+      "process": "qbittorrent",
+      "scope": "vpn",
+      "note": "Torrent client bound to PrivadoVPN on purpose"
+    },
+    {
+      "port": 3000,
+      "protocol": "TCP",
+      "process": "any",
+      "scope": "lan",
+      "note": "Open WebUI for phone / LAN"
+    },
+    {
+      "port": 8080,
+      "protocol": "TCP",
+      "process": "any",
+      "scope": "loopback",
+      "note": "ChironAI WebUI — loopback only"
+    },
+    {
+      "port": 8188,
+      "protocol": "TCP",
+      "process": "python",
+      "scope": "loopback",
+      "note": "ComfyUI"
+    },
+    {
+      "port": 22,
+      "protocol": "TCP",
+      "process": "sshd",
+      "scope": "lan",
+      "note": "OpenSSH for iPhone Shortcuts"
+    },
+    {
+      "port": 11434,
+      "protocol": "TCP",
+      "process": "any",
+      "scope": "wildcard",
+      "note": "Ollama via ChironAI; firewall must stay LAN+WG (192.168.50.0/24, 10.6.0.0/24)"
+    },
+    {
+      "port": 6333,
+      "protocol": "TCP",
+      "process": "any",
+      "scope": "loopback",
+      "note": "Qdrant should stay loopback / docker-internal"
+    }
+  ],
+  "sensitiveShareNames": [
+    "ComfyUI",
+    "ComfyUI-output",
+    "Hermes",
+    "C$",
+    "D$",
+    "ADMIN$"
+  ],
+  "sensitiveFirewallNamePatterns": [
+    "Sunshine",
+    "RustDesk",
+    "File and Printer Sharing",
+    "ComfyUI",
+    "ollama",
+    "Python",
+    "python.exe",
+    "OpenSSH",
+    "Docker",
+    "qBittorrent",
+    "Teredo",
+    "Remote Desktop"
+  ],
+  "ignoreProcessNames": [
+    "svchost",
+    "lsass",
+    "wininit",
+    "services",
+    "spoolsv",
+    "jhi_service",
+    "System",
+    "EADesktop",
+    "EALocalHostSvc",
+    "EABackgroundService",
+    "Cursor",
+    "MEGAsync",
+    "GCC",
+    "ChatGPT Classic",
+    "brave",
+    "PrivadoVPN",
+    "PrivadoVPN.Service",
+    "PrivadoVPN.Wireguard.Service"
+  ],
+  "ignoreWildcardSystemPorts": [
+    135,
+    445,
+    500,
+    1900,
+    2177,
+    3702,
+    4500,
+    5040,
+    5050,
+    5353,
+    5355,
+    5357
+  ],
+  "tunnelProcessNames": [
+    "ngrok",
+    "cloudflared",
+    "playit",
+    "frpc",
+    "frps",
+    "bore",
+    "wstunnel",
+    "zrok",
+    "pinggy",
+    "pagekite",
+    "tailscale",
+    "tailscaled",
+    "zerotier-one",
+    "localtunnel",
+    "expose",
+    "rathole",
+    "gost",
+    "chisel"
+  ],
+  "remoteAccessProcessNames": [
+    "TeamViewer",
+    "TeamViewer_Service",
+    "AnyDesk",
+    "Splashtop",
+    "SRService",
+    "remoting_host",
+    "Parsec",
+    "parsecd",
+    "vncserver",
+    "tvnserver",
+    "WinVNC",
+    "UltraVNC",
+    "tightvnc",
+    "ammyy",
+    "RMS_Service",
+    "rutserv",
+    "AweSun",
+    "ToDesk",
+    "rustdesk"
+  ],
+  "expectedDockerPublishPorts": [
+    11434
+  ],
+  "suppress": {
+    "smbOnVpn": false,
+    "sunshineFirewallAny": false,
+    "pythonPublicAny": false,
+    "ollamaPublicAny": false,
+    "restrictiveSmbPublicAny": false,
+    "comfyOutputWan": false,
+    "steamOnVpn": true,
+    "ssdpOnVpn": true
+  }
+}

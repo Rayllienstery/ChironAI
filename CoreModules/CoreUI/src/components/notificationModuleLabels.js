@@ -6,6 +6,7 @@ const LABELS = {
   rag: 'RAG / Qdrant',
   'rag-fusion-proxy': 'RAG Fusion Proxy',
   'tokens-security': 'Tokens and Security',
+  'phone-host': 'iPhone PC',
   /** @deprecated persisted history may still use the old key */
   'dumb-proxy': 'RAG Fusion Proxy',
   'llm-proxy': 'LLM Proxy',
@@ -15,6 +16,7 @@ const LABELS = {
   testing: 'Testing',
   dashboard: 'Dashboard',
   settings: 'Settings',
+  docker: 'Docker',
 };
 
 export function notificationModuleLabel(source) {

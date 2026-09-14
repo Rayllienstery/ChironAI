@@ -42,6 +42,9 @@ class _FakeDockerManager:
             raise ValueError("image is required")
         return {"ok": True, "image": image, "changed": False}
 
+    def start_engine(self) -> dict[str, Any]:
+        return {"ok": True, "engine_ready": False, "started": True, "message": "docker engine start requested"}
+
     def start_container(self, container: str) -> dict[str, Any]:
         if not container:
             raise ValueError("container is required")
@@ -84,6 +87,24 @@ def test_docker_routes_list_and_status(monkeypatch: Any) -> None:
     assert (status.get_json() or {})["engine_ready"] is True
     assert (containers.get_json() or {})["containers"][0]["name"] == "qdrant"
     assert (images.get_json() or {})["images"][0]["image"] == "qdrant/qdrant:latest"
+
+
+def test_docker_routes_start_engine(monkeypatch: Any) -> None:
+    _ensure_root_on_path()
+    import api.http.webui_docker_routes as docker_routes
+    from api.http.rag_routes import create_app
+
+    monkeypatch.setattr(docker_routes, "DockerManager", _FakeDockerManager)
+    app = create_app()
+    client = app.test_client()
+
+    started = client.post("/api/webui/docker/engine/start", json={})
+
+    assert started.status_code == 200
+    payload = started.get_json() or {}
+    assert payload["ok"] is True
+    assert payload["started"] is True
+    assert payload["engine_ready"] is False
 
 
 def test_docker_events_route_streams_sse(monkeypatch: Any) -> None:

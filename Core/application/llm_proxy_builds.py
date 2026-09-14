@@ -10,6 +10,7 @@ from typing import Any
 LLM_PROXY_BUILDS_APP_KEY = "llm_proxy_builds"
 DEFAULT_NUM_PREDICT = 65536
 MAX_NUM_PREDICT = 262144
+MAX_NUM_CTX = 262144
 
 _ID_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9_.-]{0,127}$")
 
@@ -93,8 +94,8 @@ def normalize_build(build: dict[str, Any]) -> tuple[dict[str, Any] | None, list[
     if num_ctx is not None and str(num_ctx).strip() != "":
         try:
             nc = int(num_ctx)
-            if nc < 256:
-                errors.append("num_ctx must be >= 256 or empty")
+            if nc < 256 or nc > MAX_NUM_CTX:
+                errors.append(f"num_ctx must be between 256 and {MAX_NUM_CTX} or empty")
         except (TypeError, ValueError):
             errors.append("num_ctx must be a positive integer or empty")
 
@@ -353,8 +354,10 @@ def build_ollama_options(build: dict[str, Any]) -> dict[str, Any]:
     if nc is not None:
         try:
             n = int(nc)
-            if n >= 256:
+            if 256 <= n <= MAX_NUM_CTX:
                 opts["num_ctx"] = n
+            elif n > MAX_NUM_CTX:
+                opts["num_ctx"] = MAX_NUM_CTX
         except (TypeError, ValueError):
             pass
     np = build.get("num_predict", DEFAULT_NUM_PREDICT)

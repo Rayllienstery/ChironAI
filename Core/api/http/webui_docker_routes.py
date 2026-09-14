@@ -59,6 +59,15 @@ def register_docker_routes(
             error_log.error("webui_docker_routes.docker_status", exc_info=True)
             return jsonify(_error_payload("Failed to read Docker status", str(e))), 500
 
+    @bp.route("/docker/engine/start", methods=["POST"])
+    def docker_start_engine() -> Any:
+        try:
+            result = manager().start_engine()
+            return jsonify(result), _status_for_result(result)
+        except Exception as e:
+            error_log.error("webui_docker_routes.docker_start_engine", exc_info=True)
+            return jsonify(_error_payload("Failed to start Docker Engine", str(e))), 500
+
     @bp.route("/docker/containers", methods=["GET"])
     def docker_containers() -> Any:
         try:

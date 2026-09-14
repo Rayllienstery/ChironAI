@@ -54,6 +54,7 @@ Current root directory ownership:
 | `.tmp_openwebui_data/` | temporary | local runtime data |
 | `.tmp_test_local/` | temporary | local test data |
 | `.vscode/` | project support | editor metadata |
+| `_tmp_switch/` | temporary | local Switch dump, never commit |
 | `chironai.egg-info/` | project support | packaging metadata |
 | `Core/` | Core | application host container |
 | `CoreModules/` | CoreModules | reusable modules and applications |
@@ -62,6 +63,7 @@ Current root directory ownership:
 | `logs/` | runtime data | local logs and databases |
 | `rag_tests/` | project support | RAG evaluation fixtures |
 | `reports/` | project support | generated reports |
+| `runtime/` | temporary | local agent dump scripts, never commit |
 | `scripts/` | project support | repo tooling |
 | `tests/` | project support | test suite |
 | `tmp/` | temporary | scratch and cloned dependency worktrees |
@@ -170,6 +172,8 @@ In practice:
 - Token base: `CoreModules/CoreUI/src/styles/tokens.css` (Material 3: `--md-sys-*`, fonts `--coreui-font-*`).
 - Global imports: `CoreModules/CoreUI/src/main.jsx` (`tokens.css`, `coreui-system.css`).
 - Primitive pattern: component (e.g. `CoreUIButton.jsx`) + dedicated CSS in `styles/components/`. Prefer tokens and classes over long inline styles where the system is already wired.
+- Primary cards use `--md-sys-color-surface`, same as the other cards. Do not paint a main card with `surface-container-low`, `surface-container`, a gray fill, or any other container tint. That gray primary-card background usually violates our design rules. Nested capsules/pills inside the card are a separate surface; the outer card itself must stay on `surface`.
+- Card, pill, capsule, and rail-item surfaces use the same background as the other cards (`--md-sys-color-surface`, or transparent on a shared panel). Do not paint a selected/active item with a tinted accent fill (`color-mix` of a brand/accent color into the card) or wrap the capsule in an extra colored outline. That filled selected-card look usually violates our design rules. Mark selection with existing tab/pill patterns or label color/weight, not a unique colored card skin.
 
 ### Navigation and loading
 
@@ -306,7 +310,7 @@ Risk and “tail” summary: `docs/legacy_map.md`.
 - [ ] No import-boundary violations for `domain/`?
 - [ ] If `config/*.yaml` or env vars changed: are they documented for users/deploy?
 - [ ] Did you add a new long-lived monolith “tail”—worth a line in `docs/legacy_map.md`?
-- [ ] For CoreUI: styles via tokens/existing classes; new tabs via the lazy pattern in `App.jsx`; tab/subtab hierarchy uses `CoreUIPillTabs` outside cards and `CoreUISubtabs` inside cards; reusable views unified instead of duplicated; CoreUI Showcase updated when UI was added or removed.
+- [ ] For CoreUI: styles via tokens/existing classes; new tabs via the lazy pattern in `App.jsx`; tab/subtab hierarchy uses `CoreUIPillTabs` outside cards and `CoreUISubtabs` inside cards; reusable views unified instead of duplicated; CoreUI Showcase updated when UI was added or removed; primary cards stay on `--md-sys-color-surface` (no gray `surface-container*` fills on the outer card); no tinted selected-card fills or extra colored outlines on capsules.
 - [ ] If CoreUI React/Vite source changed: production build or equivalent JSX/parser/lint check passed, or the final response explains why it was not run.
 - [ ] If any non-`.md` file changed: application startup verified through [`build_and_run.bat`](build_and_run.bat), or the final response explains why it was not verified.
 - [ ] For Extensions:

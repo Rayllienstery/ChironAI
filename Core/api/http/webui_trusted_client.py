@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import hmac
 import ipaddress
 from typing import TYPE_CHECKING, Any
+
+from core.contracts.webui_api import PHONE_STATUS_TOKEN_HEADER
 
 if TYPE_CHECKING:
     from flask import Request
@@ -62,4 +65,36 @@ def check_remote_reveal_pin(request: Request, settings_repo: Any) -> tuple | Non
         verify_pin_for_reveal(settings_repo, pin)
     except PinError as e:
         return error_response(e.message, 403, extra={"code": e.code})
+    return None
+
+
+def extract_phone_status_token_from_request(request: Request) -> str:
+    """Read the phone-status token from header or ``Authorization: Bearer``."""
+    header_token = (request.headers.get(PHONE_STATUS_TOKEN_HEADER) or "").strip()
+    if header_token:
+        return header_token
+    authorization = (request.headers.get("Authorization") or "").strip()
+    prefix = "bearer "
+    if authorization.lower().startswith(prefix):
+        return authorization[len(prefix) :].strip()
+    return str(request.args.get("token") or "").strip()
+
+
+def check_phone_status_access(request: Request) -> tuple | None:
+    """Allow loopback always; require ``CHIRONAI_PHONE_STATUS_TOKEN`` off-loopback."""
+    if is_loopback_client_request(request):
+        return None
+    from error_manager.http import error_response
+
+    from config.env import get_phone_status_token
+
+    configured = get_phone_status_token()
+    if not configured:
+        return error_response(
+            "Phone status is loopback-only unless CHIRONAI_PHONE_STATUS_TOKEN is set.",
+            403,
+        )
+    provided = extract_phone_status_token_from_request(request)
+    if not provided or not hmac.compare_digest(provided, configured):
+        return error_response("Invalid or missing phone status token.", 403)
     return None

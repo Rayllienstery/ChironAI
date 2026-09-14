@@ -12,6 +12,9 @@ from typing import Any
 from llm_proxy.chat_completions_upstream_budget import _ollama_message_content_str
 from llm_proxy.ollama_compat import (
     caps_supports_thinking,
+    chat_error_suggests_no_think,
+    chat_error_suggests_no_tools,
+    fold_instruction_messages_for_ollama,
     ollama_chat_tool_choice_payload_value,
     resolve_brand_key,
 )
@@ -155,6 +158,58 @@ def _positive_int_or_none(value: Any) -> int | None:
     return n if n > 0 else None
 
 
+# GLM flash/smart advertise a 1M window. Compaction follows that; do not send
+# num_ctx in Ollama options — 1M hung cloud builds, and 256K still dropped.
+FLASH_SMART_INPUT_BUDGET_FLOOR_TOKENS = 1_048_576
+_FLASH_SMART_BUILD_IDS = frozenset(
+    {
+        "flash-worker",
+        "hard-worker-2",
+        "hermes-flash",
+        "hermes-smart",
+    }
+)
+
+
+def _model_tag(value: str) -> str:
+    return str(value or "").strip().lower().split("/")[-1]
+
+
+def _uses_flash_or_smart_context(
+    *,
+    requested_model: str | None = None,
+    active_build: dict[str, Any] | None = None,
+) -> bool:
+    bid = _model_tag((active_build or {}).get("id") if isinstance(active_build, dict) else "")
+    if bid in _FLASH_SMART_BUILD_IDS:
+        return True
+    req = str(requested_model or "").strip().lower()
+    req_tail = _model_tag(req.rsplit(".", 1)[-1] if req else "")
+    if req in _FLASH_SMART_BUILD_IDS or req_tail in _FLASH_SMART_BUILD_IDS:
+        return True
+    names = [req]
+    if isinstance(active_build, dict):
+        names.append(str(active_build.get("model") or ""))
+        names.append(str(active_build.get("ollama_model") or ""))
+    for raw in names:
+        tag = _model_tag(raw)
+        if "glm-5.3-flash" in tag:
+            return True
+        if tag == "glm-5.3" or tag.startswith("glm-5.3:"):
+            return True
+    return False
+
+
+def _drop_upstream_num_ctx_for_flash_smart(
+    options: dict[str, Any],
+    *,
+    requested_model: str | None = None,
+    active_build: dict[str, Any] | None = None,
+) -> None:
+    if _uses_flash_or_smart_context(requested_model=requested_model, active_build=active_build):
+        options.pop("num_ctx", None)
+
+
 def _effective_num_predict(
     chat_client: Any,
     build_extra_options: dict[str, Any],
@@ -197,11 +252,29 @@ def _input_budget_from_context(
     *,
     num_ctx: int | None,
     num_predict: int | None,
+    requested_model: str | None = None,
+    active_build: dict[str, Any] | None = None,
 ) -> dict[str, int] | None:
-    if num_ctx is None or num_ctx <= 0 or num_predict is None or num_predict <= 0:
+    floor = (
+        FLASH_SMART_INPUT_BUDGET_FLOOR_TOKENS
+        if _uses_flash_or_smart_context(
+            requested_model=requested_model,
+            active_build=active_build,
+        )
+        else 0
+    )
+    if (num_ctx is None or num_ctx <= 0 or num_predict is None or num_predict <= 0) and floor <= 0:
         return None
+    if num_ctx is None or num_ctx <= 0:
+        num_ctx = floor
+    if num_predict is None or num_predict <= 0:
+        num_predict = 16384
+    if floor:
+        num_ctx = max(int(num_ctx), floor)
     safety_margin = max(4096, min(int(num_ctx / 32), 8192))
     input_budget = max(1024, int(num_ctx) - int(num_predict) - safety_margin)
+    if floor:
+        input_budget = max(input_budget, floor)
     return {
         "num_ctx": int(num_ctx),
         "reserved_output_tokens": int(num_predict),
@@ -537,9 +610,10 @@ def _proxy_ollama_chat_text_parts(
     _co = dict(getattr(chat_client, "_default_options", None) or {})
     if options_overlay:
         _co.update(options_overlay)
+    _drop_upstream_num_ctx_for_flash_smart(_co, requested_model=model)
     payload: dict[str, Any] = {
         "model": model,
-        "messages": messages,
+        "messages": fold_instruction_messages_for_ollama(messages),
         "stream": False,
         "options": dict(_co),
     }
@@ -600,9 +674,10 @@ def _iter_proxy_ollama_chat_stream(
     _co = dict(getattr(chat_client, "_default_options", None) or {})
     if options_overlay:
         _co.update(options_overlay)
+    _drop_upstream_num_ctx_for_flash_smart(_co, requested_model=model)
     payload: dict[str, Any] = {
         "model": model,
-        "messages": messages,
+        "messages": fold_instruction_messages_for_ollama(messages),
         "stream": True,
         "options": dict(_co),
     }
@@ -616,7 +691,25 @@ def _iter_proxy_ollama_chat_stream(
 
     stream_fn = getattr(chat_client, "iter_chat_api_stream_events", None)
     if callable(stream_fn):
-        yield from stream_fn(payload)
+        attempt: dict[str, Any] = dict(payload)
+        last_exc: Exception | None = None
+        for _ in range(3):
+            try:
+                yield from stream_fn(attempt)
+                last_exc = None
+                break
+            except Exception as exc:
+                last_exc = exc
+                if chat_error_suggests_no_tools(exc) and "tools" in attempt:
+                    attempt.pop("tools", None)
+                    attempt.pop("tool_choice", None)
+                    continue
+                if chat_error_suggests_no_think(exc) and "think" in attempt:
+                    attempt.pop("think", None)
+                    continue
+                raise
+        if last_exc is not None:
+            raise last_exc
     else:
         chat_api_fn = getattr(chat_client, "chat_api", None)
         if callable(chat_api_fn):
@@ -661,8 +754,8 @@ def vision_fallback_preferences(active_build: dict[str, Any] | None) -> tuple[st
     raw.append(os.getenv("LLM_PROXY_VISION_FALLBACK_MODEL", "").strip())
     raw.extend(
         (
+            "glm-5.3-flash:cloud",
             "minimax-m3:cloud",
-            "kimi-k2.6:cloud",
             "gemini-3-flash-preview:cloud",
         )
     )

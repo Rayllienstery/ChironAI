@@ -26,6 +26,7 @@ which calls `register_*_routes` on domain modules:
 | `webui_observability_routes.py` | Logs, proxy traces, notifications |
 | `webui_docker_routes.py` | Docker services |
 | `webui_performance_routes.py` | Startup / browser timing |
+| `webui_phone_host_routes.py` | Compact iPhone host/generation status and script enable flags |
 | `webui_prompt_routes.py` | Prompt templates |
 | `webui_session_routes.py` | Session id |
 | `webui_version_routes.py` | Version |

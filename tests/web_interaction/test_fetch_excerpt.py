@@ -9,6 +9,8 @@ from web_interaction.fetch_excerpt import excerpt_url_allowed, fetch_page_excerp
 def test_excerpt_url_allowed() -> None:
     assert excerpt_url_allowed("https://developer.apple.com/documentation/SwiftUI") is True
     assert excerpt_url_allowed("https://www.swift.org/download/") is True
+    assert excerpt_url_allowed("https://github.com/ggml-org/llama.cpp") is True
+    assert excerpt_url_allowed("https://www.youtube.com/watch?v=abc") is False
     assert excerpt_url_allowed("https://evil.com/") is False
 
 
@@ -22,6 +24,8 @@ def test_fetch_page_excerpt_mocked(monkeypatch) -> None:
     monkeypatch.setenv("WEB_INTERACTION_FETCH_PAGE", "1")
 
     class Resp:
+        headers = {"Content-Type": "text/html"}
+
         def __enter__(self):
             return self
 

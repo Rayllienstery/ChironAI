@@ -38,13 +38,31 @@ class DockerCommandResult:
         return (self.stderr or self.stdout or f"docker exited with {self.code}").strip()
 
 
+def _windows_docker_exe(path: str) -> str:
+    """Prefer docker.exe over the extensionless Linux CLI next to it."""
+    text = str(path or "").strip()
+    if not text:
+        return text
+    if text.lower().endswith(".exe") and os.path.isfile(text):
+        return text
+    sibling = text + ".exe" if not text.lower().endswith(".exe") else text
+    if os.path.isfile(sibling):
+        return sibling
+    dirname = os.path.dirname(text)
+    if dirname:
+        candidate = os.path.join(dirname, "docker.exe")
+        if os.path.isfile(candidate):
+            return candidate
+    return text
+
+
 def _docker_executable() -> str:
     env = (os.getenv("DOCKER_EXE") or "").strip()
     if env:
         return env
     found = shutil.which("docker")
     if found:
-        return found
+        return _windows_docker_exe(found) if sys.platform == "win32" else found
     if sys.platform == "win32":
         pf = os.environ.get("PROGRAMFILES", r"C:\Program Files")
         candidate = os.path.join(pf, "Docker", "Docker", "resources", "bin", "docker.exe")
@@ -152,6 +170,56 @@ class DockerManager:
             return True, ""
         return False, str(status.get("error") or "Docker Engine is not ready")
 
+    def start_engine(
+        self,
+        *,
+        docker_desktop_exe: str = r"C:\Program Files\Docker\Docker\Docker Desktop.exe",
+        start_desktop_on_windows: bool = True,
+    ) -> dict[str, Any]:
+        """Launch Docker Desktop when needed and return immediately.
+
+        CoreUI polls ``status()`` until the engine is ready. Use ``wait_engine``
+        when the caller wants to block until Docker answers.
+        """
+        ready, detail = self.engine_info()
+        if ready:
+            return {
+                "ok": True,
+                "engine_ready": True,
+                "started": False,
+                "message": "docker engine ready",
+                "status": self.status(),
+            }
+
+        started = False
+        if start_desktop_on_windows and sys.platform == "win32":
+            try:
+                subprocess.Popen(
+                    [docker_desktop_exe],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                started = True
+            except OSError as e:
+                message = f"failed to start Docker Desktop: {e}"
+                return {
+                    "ok": False,
+                    "engine_ready": False,
+                    "started": False,
+                    "message": message,
+                    "error": message,
+                    "status": self.status(),
+                }
+
+        message = "docker engine start requested" if started else (detail or "docker not ready")
+        return {
+            "ok": True,
+            "engine_ready": False,
+            "started": started,
+            "message": message,
+            "status": self.status(),
+        }
+
     def wait_engine(
         self,
         *,
@@ -160,22 +228,21 @@ class DockerManager:
         interval: float = 5.0,
         start_desktop_on_windows: bool = True,
     ) -> dict[str, Any]:
-        ready, detail = self.engine_info()
-        if ready:
-            return {"ok": True, "message": "docker engine ready", "status": self.status()}
-
-        if start_desktop_on_windows and sys.platform == "win32":
-            try:
-                subprocess.Popen(
-                    [docker_desktop_exe],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-            except OSError as e:
-                return {"ok": False, "message": f"failed to start Docker Desktop: {e}", "status": self.status()}
+        result = self.start_engine(
+            docker_desktop_exe=docker_desktop_exe,
+            start_desktop_on_windows=start_desktop_on_windows,
+        )
+        if bool(result.get("engine_ready")):
+            return {"ok": True, "message": "docker engine ready", "status": result.get("status") or self.status()}
+        if not bool(result.get("ok")):
+            return {
+                "ok": False,
+                "message": str(result.get("message") or "failed to start Docker Desktop"),
+                "status": result.get("status") or self.status(),
+            }
 
         deadline = time.monotonic() + float(timeout)
-        last_err = detail or "docker not ready"
+        last_err = str(result.get("message") or "docker not ready")
         while time.monotonic() < deadline:
             ready, detail = self.engine_info()
             if ready:
@@ -627,7 +694,9 @@ class DockerManager:
         Security context fields (user, cap_drop, read_only_root_fs, etc.) are
         intentionally excluded so that existing containers keep running and new
         containers receive the latest hardening defaults without forcing a
-        disruptive recreation of managed services.
+        disruptive recreation of managed services. tmpfs is included because it
+        is a mount: omitting it leaves crash-looping containers in place when a
+        service later adds a required writable path.
         """
         return {
             "name": spec.name,
@@ -639,6 +708,7 @@ class DockerManager:
             "extra_hosts": spec.extra_hosts,
             "command": spec.command,
             "labels": spec.labels,
+            "tmpfs": spec.tmpfs,
         }
 
     @staticmethod

@@ -47,6 +47,7 @@ ChironAI **0.8.x STABLE** and **0.9.x PRE-RELEASE** do not ship WebUI login. Sec
 | `/api/webui/llm-proxy/api-key` `GET` | None (metadata only) | Does not return plaintext key |
 | `/api/webui/llm-proxy/reveal-pin` | Loopback for mutations; status is public | Install/change/disable and lockout reset require loopback. `GET` returns `{configured, locked_out}` metadata only. |
 | `/api/webui/logs`, `/proxy-logs`, `/proxy-traces`, `/proxy-journal` (read/clear) | Loopback **or** LAN with PIN | Same reveal PIN as API key reveal; pass via `X-Chiron-Reveal-Pin` header or `pin` query/body. `POST /logs` (create) is not gated. |
+| `/api/webui/host/phone-status` | Loopback **or** token | Loopback always. Off-loopback requires `CHIRONAI_PHONE_STATUS_TOKEN` via `X-Chiron-Phone-Token` or `Authorization: Bearer`. Do not bind the whole WebUI to LAN just for this; prefer SSH `curl` to localhost. |
 | Extension management | None (WebUI API) | Same as WebUI — localhost or trusted LAN only |
 
 Built-in WebUI authentication is **deferred** until a prioritized LAN/multi-user requirement. See [`docs/adr/0008-webui-auth-model.md`](docs/adr/0008-webui-auth-model.md).

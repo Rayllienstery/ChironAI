@@ -15,7 +15,7 @@ from llm_proxy.chat_completions_response_helpers import (
     upstream_chat_error_message,
 )
 
-DEFAULT_REASONING_ONLY_GUARD_CHARS = 32_000
+DEFAULT_REASONING_ONLY_GUARD_CHARS = 512_000
 
 SSE_RESPONSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
 SSE_MIMETYPE = "text/event-stream"
@@ -32,6 +32,7 @@ def openai_chat_completion_chunk(
     *,
     delta: dict[str, Any],
     finish_reason: str | None = None,
+    extra: dict[str, Any] | None = None,
 ) -> str:
     payload = {
         "id": completion_id,
@@ -39,7 +40,89 @@ def openai_chat_completion_chunk(
         "model": model,
         "choices": [{"index": 0, "delta": delta, "finish_reason": finish_reason}],
     }
+    if extra:
+        payload.update(extra)
     return f"data: {json.dumps(payload)}\n\n"
+
+
+def context_window_tokens_from_trace(trace: dict[str, Any] | None) -> int | None:
+    req = trace.get("request") if isinstance(trace, dict) else None
+    if not isinstance(req, dict):
+        return None
+    try:
+        n = int(req.get("effective_num_ctx") or 0)
+    except (TypeError, ValueError):
+        n = 0
+    if n > 0:
+        return n
+    budget = req.get("input_budget")
+    if isinstance(budget, dict):
+        try:
+            n = int(budget.get("num_ctx") or 0)
+        except (TypeError, ValueError):
+            n = 0
+        if n > 0:
+            return n
+    return None
+
+
+def upstream_context_tokens_from_trace(trace: dict[str, Any] | None) -> int | None:
+    req = trace.get("request") if isinstance(trace, dict) else None
+    if not isinstance(req, dict):
+        return None
+    try:
+        n = int(req.get("upstream_num_ctx") or 0)
+    except (TypeError, ValueError):
+        n = 0
+    return n if n > 0 else None
+
+
+def format_context_window_percent(percent: float) -> str | None:
+    if percent != percent or percent < 0:  # NaN or negative
+        return None
+    if 0 < percent < 0.5:
+        return "<1%"
+    return f"{int(round(percent))}%"
+
+
+def format_owui_usage_status(
+    *,
+    completion_tokens: int,
+    prompt_tokens: int = 0,
+    num_ctx: int | None = None,
+    upstream_num_ctx: int | None = None,
+) -> str:
+    """Open WebUI / CoreUI live chips: ``6982 tok · 11%`` (context-window fill)."""
+    tok = max(0, int(completion_tokens))
+    label = f"{tok} tok"
+    used = max(0, int(prompt_tokens)) + tok
+    window = int(num_ctx or 0)
+    upstream = int(upstream_num_ctx or 0)
+    percents: list[str] = []
+    if upstream > 0:
+        pct = format_context_window_percent((used / upstream) * 100)
+        if pct:
+            percents.append(pct)
+    if window > 0 and window != upstream:
+        pct = format_context_window_percent((used / window) * 100)
+        if pct:
+            percents.append(pct)
+    if not percents:
+        return label
+    return f"{label} · {' | '.join(percents)}"
+
+
+def owui_usage_status_event(description: str, *, done: bool = False) -> dict[str, Any]:
+    """Open WebUI middleware lifts ``event`` on an SSE chunk into the status line."""
+    return {
+        "type": "status",
+        "data": {
+            "description": (description or "").strip(),
+            "done": bool(done),
+            "hidden": False,
+            "action": "chiron_ctx",
+        },
+    }
 
 
 def sse_role_assistant_chunk(completion_id: str, model: str) -> str:
@@ -102,8 +185,13 @@ def iter_sse_from_ollama_stream_events(
     upstream_model: str = "",
     trace: dict[str, Any] | None = None,
     on_visible_progress: Callable[[str], None] | None = None,
+    extra_chunk_fields: Callable[[str], dict[str, Any]] | None = None,
 ) -> Iterator[str]:
-    """Map Ollama stream events to OpenAI-style SSE chunk lines."""
+    """Map Ollama stream events to OpenAI-style SSE chunk lines.
+
+    Reasoning is streamed through to completion. The char limit only sets a
+    trace flag after upstream `done`; it never injects chat errors.
+    """
     for kind, data in events:
         if kind in ("thinking_delta", "content_delta") and data:
             text_part = str(data)
@@ -117,9 +205,20 @@ def iter_sse_from_ollama_stream_events(
                 data,
                 include_reasoning_content=include_reasoning_content,
             )
-            yield openai_chat_completion_chunk(completion_id, client_visible_model, delta=delta)
+            extra = extra_chunk_fields(accumulator.visible_content) if extra_chunk_fields is not None else None
+            yield openai_chat_completion_chunk(
+                completion_id,
+                client_visible_model,
+                delta=delta,
+                extra=extra or None,
+            )
             if on_visible_progress is not None:
                 on_visible_progress(accumulator.visible_content)
+        elif kind == "tool_calls" and data:
+            accumulator.tool_calls_raw = data if isinstance(data, list) else []
+        elif kind == "done" and isinstance(data, dict):
+            accumulator.ollama_done_payload = data
+            accumulator.ollama_done_reason = data.get("done_reason")
             guard_error = stream_reasoning_guard_message(
                 reasoning_text=accumulator.reasoning_content,
                 final_text=accumulator.final_content,
@@ -130,17 +229,6 @@ def iter_sse_from_ollama_stream_events(
                 accumulator.reasoning_guard_triggered = True
                 if on_reasoning_guard is not None:
                     on_reasoning_guard()
-                accumulator.visible_parts.append(guard_error)
-                accumulator.final_parts.append(guard_error)
-                yield sse_content_chunk(completion_id, client_visible_model, guard_error)
-                if on_visible_progress is not None:
-                    on_visible_progress(accumulator.visible_content)
-                return
-        elif kind == "tool_calls" and data:
-            accumulator.tool_calls_raw = data if isinstance(data, list) else []
-        elif kind == "done" and isinstance(data, dict):
-            accumulator.ollama_done_payload = data
-            accumulator.ollama_done_reason = data.get("done_reason")
         elif kind == "error":
             err_source: Exception | str
             err_source = data if isinstance(data, BaseException) else str(data)

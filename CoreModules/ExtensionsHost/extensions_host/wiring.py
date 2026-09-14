@@ -29,6 +29,7 @@ def build_extension_host_stack(
     settings_repo: Any,
     chat_client: Any | None = None,
     docker_runtime: Any | None = None,
+    hermes_runtime: Any | None = None,
     host_metadata: dict[str, Any] | None = None,
     default_provider_id: str = DEFAULT_LLM_PROVIDER_ID,
     bootstrap_sync: bool = True,
@@ -66,6 +67,15 @@ def build_extension_host_stack(
         except Exception as exc:
             _log.warning("DockerManager unavailable for extension host: %s", exc)
             docker_runtime = None
+
+    if hermes_runtime is None:
+        try:
+            from application.hermes_runtime import HermesRuntime
+
+            hermes_runtime = HermesRuntime()
+        except Exception as exc:
+            _log.warning("HermesRuntime unavailable for extension host: %s", exc)
+            hermes_runtime = None
 
     if registry_url is None or blocklist_url is None or github_token is None:
         try:
@@ -105,6 +115,7 @@ def build_extension_host_stack(
         get_settings_repository=settings_getter,
         chat_client=chat_client,
         docker_runtime=docker_runtime,
+        hermes_runtime=hermes_runtime,
         metadata=metadata,
     )
     manager = ExtensionManager(
