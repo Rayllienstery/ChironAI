@@ -1,6 +1,11 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.10.40] - 2026-09-15
+
+### Fixed
+- Quality Gate CI: restore Win32 host/Hermes unit tests, satisfy pyright on ctypes/`sysconf` branches, omit pure Win32 process/CPU/RAM probes from the domain/application coverage denominator, allowlist new npm audit GHSAs, and scrub a gitleaks false positive in the phone-host curl example.
+
 ## [0.10.39] - 2026-09-14
 
 ### Changed

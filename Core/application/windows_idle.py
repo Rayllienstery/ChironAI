@@ -43,7 +43,7 @@ def pulse_idle_timers() -> None:
     """Restart Windows display and sleep idle countdowns; do not hold them."""
     if sys.platform != "win32":
         return
-    try:
+    try:  # pragma: no cover - SetThreadExecutionState
         import ctypes
 
         ctypes.windll.kernel32.SetThreadExecutionState(_ES_SYSTEM_REQUIRED | _ES_DISPLAY_REQUIRED)

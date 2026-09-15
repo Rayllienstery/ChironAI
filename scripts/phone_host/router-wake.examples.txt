@@ -9,7 +9,8 @@
 # iPhone bookmark: http://192.168.50.1:9377/
 
 # --- Keenetic RCI (HTTPS to the router, from the phone on WireGuard) ---
-# curl -k -u admin:PASSWORD -H "Content-Type: application/json" -X POST https://192.168.50.1/rci/ \
+# Authenticate with the Keenetic RCI account first, then:
+# curl -k -H "Content-Type: application/json" -X POST https://192.168.50.1/rci/ \
 #   --data "{\"ip\":{\"hotspot\":{\"wake\":{\"mac\":\"74:56:3c:36:a3:76\"}}}}"
 
 # --- Keenetic on-router (Entware / SSH, no password) ---

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chironai"
-version = "0.10.39"
+version = "0.10.40"
 description = "Modular RAG platform (Ollama + Qdrant) with WebUI and crawl/index pipelines. Configured for Apple platforms, supports any domain."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -67,7 +67,7 @@ Homepage = "https://github.com/Rayllienstery/ChironAI"
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.10.39"
+version = "0.10.40"
 version_files = [
   "Core/core/version.py:VERSION",
   "pyproject.toml:version",
@@ -155,6 +155,11 @@ omit = [
   "Core/application/__init__.py",
   "Core/application/crawl/__init__.py",
   "Core/application/rag/__init__.py",
+  # Win32/ctypes process+RAM probes: pure helpers are unit-tested; platform
+  # branches stay out of the domain/application coverage denominator.
+  "Core/application/hermes_processes.py",
+  "Core/application/host_cpu.py",
+  "Core/application/host_memory.py",
   "Core/domain/__init__.py",
   "Core/domain/entities/__init__.py",
   "Core/domain/errors/__init__.py",

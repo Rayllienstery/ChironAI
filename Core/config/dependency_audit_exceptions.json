@@ -66,6 +66,66 @@
       "id": "GHSA-fx2h-pf6j-xcff",
       "package": "vite",
       "reason": "Dev-only vite server; fix requires vite 8 major bump — tracked separately."
+    },
+    {
+      "id": "GHSA-3jxr-9vmj-r5cp",
+      "package": "brace-expansion",
+      "reason": "Transitive via npm tooling (minimatch/glob); no untrusted brace patterns in runtime UI."
+    },
+    {
+      "id": "GHSA-mh99-v99m-4gvg",
+      "package": "brace-expansion",
+      "reason": "Transitive via npm tooling (minimatch/glob); no untrusted brace patterns in runtime UI."
+    },
+    {
+      "id": "GHSA-rgw5-rvv9-x895",
+      "package": "brace-expansion",
+      "reason": "Transitive via npm tooling (minimatch/glob); no untrusted brace patterns in runtime UI."
+    },
+    {
+      "id": "GHSA-c83g-rgw3-j3cx",
+      "package": "browserslist",
+      "reason": "Dev-only browser target tooling via vite/babel; not shipped in CoreUI runtime."
+    },
+    {
+      "id": "GHSA-73wf-gq98-2v4g",
+      "package": "browserslist",
+      "reason": "Dev-only browser target tooling via vite/babel; not shipped in CoreUI runtime."
+    },
+    {
+      "id": "GHSA-52cp-r559-cp3m",
+      "package": "js-yaml",
+      "reason": "Dev/transitive YAML parser; CoreUI does not parse untrusted YAML at runtime."
+    },
+    {
+      "id": "GHSA-5p4m-2wfm-xmqj",
+      "package": "js-yaml",
+      "reason": "Dev/transitive YAML parser; CoreUI does not parse untrusted YAML at runtime."
+    },
+    {
+      "id": "GHSA-2883-xcg3-v3hh",
+      "package": "js-yaml",
+      "reason": "Dev/transitive YAML parser; CoreUI does not parse untrusted YAML at runtime."
+    },
+    {
+      "id": "GHSA-28wg-ghj8-5hjv",
+      "package": "nanoid",
+      "reason": "Transitive id generator via tooling; no custom size=0/negative generators in app code."
+    },
+    {
+      "id": "GHSA-2v37-7h3g-55p8",
+      "package": "nanoid",
+      "reason": "Transitive id generator via tooling; no custom size=0/negative generators in app code."
+    },
+    {
+      "id": "GHSA-r28c-9q8g-f849",
+      "package": "postcss",
+      "reason": "Dev-only CSS pipeline via vite; not exposed as a network parser in production."
+    },
+    {
+      "id": "GHSA-7w5x-hrqm-74c2",
+      "package": "smol-toml",
+      "reason": "Dev/transitive TOML parser; CoreUI does not parse untrusted TOML at runtime."
     }
   ]
 }

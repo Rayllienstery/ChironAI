@@ -178,3 +178,81 @@ def test_windows_spawn_flags_break_away_from_job(monkeypatch) -> None:
     cli_flags = hermes_runtime._windows_creation_flags(hide_only=True, breakaway=True)
     assert cli_flags & hermes_runtime.CREATE_NO_WINDOW
     assert not (cli_flags & hermes_runtime.CREATE_BREAKAWAY_FROM_JOB)
+
+
+def test_urls_and_config_summary(tmp_path: Path) -> None:
+    assert hermes_runtime.default_health_url(9) == "http://127.0.0.1:9/health"
+    assert hermes_runtime.default_dashboard_url(8).endswith(":8/")
+    (tmp_path / "config.yaml").write_text(
+        "\n".join(
+            [
+                "model:",
+                "  default: llama",
+                "image_gen:",
+                "  provider: comfy",
+                "  model: flux1",
+                "plugins:",
+                "  enabled:",
+                "    - browser",
+                "    - image_gen",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    summary = hermes_runtime._config_summary(tmp_path)
+    assert summary["default_model"] == "llama"
+    assert "comfy" in summary["image_gen"]
+    assert "browser" in summary["plugins"]
+    (tmp_path / ".env").write_text("API_SERVER_PORT=9001\n", encoding="utf-8")
+    assert hermes_runtime._read_api_port(tmp_path) == 9001
+
+
+def test_ensure_dashboard_returns_existing_url(tmp_path: Path) -> None:
+    runtime = HermesRuntime(
+        which=lambda _name: str(tmp_path / "hermes.exe"),
+        run_cli=lambda _args, _timeout: {"ok": True, "stdout": "", "stderr": ""},
+        health_probe=lambda _url: {"ok": True, "http_status": 200},
+        login_path=tmp_path / "missing.vbs",
+        home=tmp_path,
+        list_processes=lambda: [],
+    )
+    (tmp_path / "hermes.exe").write_text("stub", encoding="utf-8")
+    result = runtime.ensure_dashboard()
+    assert result["ok"] is True
+    assert "127.0.0.1" in str(result["dashboard_url"])
+
+
+def test_bind_lifecycle_accepts_dashboard_dict(monkeypatch) -> None:
+    reset_lifecycle_for_tests()
+
+    class _Runtime:
+        def ensure(self) -> dict[str, object]:
+            return {"ok": True}
+
+        def ensure_dashboard(self) -> dict[str, object]:
+            return {"ok": True, "message": "dash"}
+
+        def stop(self) -> dict[str, object]:
+            return {"ok": True}
+
+    monkeypatch.setattr(hermes_runtime, "HermesRuntime", _Runtime)
+    assert bind_lifecycle_to_host()["ok"] is True
+    reset_lifecycle_for_tests()
+
+
+def test_bind_lifecycle_ignores_non_dict_dashboard(monkeypatch) -> None:
+    reset_lifecycle_for_tests()
+
+    class _Runtime:
+        def ensure(self) -> dict[str, object]:
+            return {"ok": False, "message": "down"}
+
+        def ensure_dashboard(self) -> str:
+            return "not-a-dict"
+
+        def stop(self) -> dict[str, object]:
+            return {"ok": True}
+
+    monkeypatch.setattr(hermes_runtime, "HermesRuntime", _Runtime)
+    assert bind_lifecycle_to_host()["ok"] is False
+    reset_lifecycle_for_tests()

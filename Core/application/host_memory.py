@@ -43,6 +43,15 @@ def _windows_creation_flags() -> int:
     return int(getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000))
 
 
+def _win_dll(name: str) -> Any:
+    import ctypes
+
+    loader = getattr(ctypes, "WinDLL", None)
+    if loader is None:
+        raise OSError(f"WinDLL unavailable for {name}")
+    return loader(name, use_last_error=True)
+
+
 def _format_rss(nbytes: int) -> str:
     try:
         from application.hermes_processes import format_rss
@@ -57,13 +66,13 @@ def _format_rss(nbytes: int) -> str:
         return f"{n} B"
 
 
-def _windows_rss(pid: int) -> int:
+def _windows_rss(pid: int) -> int:  # pragma: no cover - Win32 RSS
     import ctypes
     from ctypes import wintypes
 
     PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    psapi = ctypes.WinDLL("psapi", use_last_error=True)
+    kernel32 = _win_dll("kernel32")
+    psapi = _win_dll("psapi")
     handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
     if not handle:
         return 0
@@ -104,7 +113,16 @@ def _windows_rss(pid: int) -> int:
 def _posix_rss(pid: int) -> int:
     from pathlib import Path
 
-    page = int(os.sysconf("SC_PAGE_SIZE") or 4096)
+    page = 4096
+    sysconf = getattr(os, "sysconf", None)
+    if callable(sysconf):
+        try:
+            raw_page = sysconf("SC_PAGE_SIZE")
+            page = int(str(raw_page)) if raw_page is not None else 4096
+        except (TypeError, ValueError, OSError):
+            page = 4096
+        if page <= 0:
+            page = 4096
     try:
         parts = (Path("/proc") / str(pid) / "statm").read_text(encoding="utf-8", errors="replace").split()
     except OSError:
@@ -112,7 +130,7 @@ def _posix_rss(pid: int) -> int:
     return int(parts[1]) * page if len(parts) > 1 else 0
 
 
-def _system_memory_windows() -> dict[str, int]:
+def _system_memory_windows() -> dict[str, int]:  # pragma: no cover - Win32 GlobalMemoryStatusEx
     import ctypes
     from ctypes import wintypes
 
@@ -129,7 +147,7 @@ def _system_memory_windows() -> dict[str, int]:
             ("ullAvailExtendedVirtual", ctypes.c_uint64),
         ]
 
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32 = _win_dll("kernel32")
     status = MEMORYSTATUSEX()
     status.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
     if not kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
@@ -203,7 +221,7 @@ def _system_memory_detail() -> dict[str, Any]:
 
 
 def _iter_process_rows() -> list[tuple[int, int, str]]:
-    if sys.platform == "win32":
+    if sys.platform == "win32":  # pragma: no cover - Toolhelp32 snapshot
         import ctypes
         from ctypes import wintypes
 
@@ -223,7 +241,7 @@ def _iter_process_rows() -> list[tuple[int, int, str]]:
                 ("szExeFile", wintypes.WCHAR * 260),
             ]
 
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32 = _win_dll("kernel32")
         snapshot = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
         if snapshot == wintypes.HANDLE(-1).value:
             return []
@@ -283,7 +301,7 @@ def _descendant_pids(root: int) -> set[int]:
 
 
 def _rss(pid: int) -> int:
-    if sys.platform == "win32":
+    if sys.platform == "win32":  # pragma: no cover - Win32 RSS
         return _windows_rss(pid)
     return _posix_rss(pid)
 
@@ -329,7 +347,7 @@ def _docker_run(args: list[str], *, timeout: float) -> str:
         "timeout": timeout,
         "check": False,
     }
-    if sys.platform == "win32":
+    if sys.platform == "win32":  # pragma: no cover - hidden console
         kwargs["creationflags"] = _windows_creation_flags()
     try:
         completed = subprocess.run(**kwargs)
@@ -519,7 +537,7 @@ def _gpu_snapshot() -> dict[str, Any] | None:
         "timeout": 2,
         "check": False,
     }
-    if sys.platform == "win32":
+    if sys.platform == "win32":  # pragma: no cover - hidden console
         kwargs["creationflags"] = _windows_creation_flags()
     try:
         result = subprocess.run(**kwargs)

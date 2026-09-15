@@ -293,7 +293,8 @@ def openai_model_objects_for_builds(builds: list[dict[str, Any]]) -> list[dict[s
         # Advertise thinking so OWUI/Hermes/OpenAI clients can offer a
         # reasoning_effort control. The level itself is chosen per request.
         if bool(b.get("chat_think")):
-            caps = list(row.get("capabilities") or [])
+            existing = row.get("capabilities")
+            caps = [str(item) for item in existing] if isinstance(existing, list) else []
             if "thinking" not in caps:
                 caps.append("thinking")
             row["capabilities"] = caps

@@ -5,9 +5,19 @@ from __future__ import annotations
 import os
 import sys
 import time
+from typing import Any
 
 _cpu_cache: dict[int, tuple[float, float]] = {}
 _NCPU = max(1, int(os.cpu_count() or 1))
+
+
+def _win_dll(name: str) -> Any:
+    import ctypes
+
+    loader = getattr(ctypes, "WinDLL", None)
+    if loader is None:
+        raise OSError(f"WinDLL unavailable for {name}")
+    return loader(name, use_last_error=True)
 
 
 def _filetime_seconds(low: int, high: int) -> float:
@@ -15,7 +25,7 @@ def _filetime_seconds(low: int, high: int) -> float:
 
 
 def _cpu_seconds(pid: int) -> float | None:
-    if sys.platform == "win32":
+    if sys.platform == "win32":  # pragma: no cover - Win32 process times
         import ctypes
         from ctypes import wintypes
 
@@ -27,7 +37,7 @@ def _cpu_seconds(pid: int) -> float | None:
                 ("dwHighDateTime", wintypes.DWORD),
             ]
 
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32 = _win_dll("kernel32")
         handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
         if not handle:
             return None
@@ -107,7 +117,7 @@ _system_cache: tuple[float, float, float] | None = None
 
 def _system_cpu_times() -> tuple[float, float] | None:
     """Return (idle_seconds, total_seconds) for the whole machine."""
-    if sys.platform == "win32":
+    if sys.platform == "win32":  # pragma: no cover - Win32 system times
         import ctypes
         from ctypes import wintypes
 
@@ -117,7 +127,7 @@ def _system_cpu_times() -> tuple[float, float] | None:
                 ("dwHighDateTime", wintypes.DWORD),
             ]
 
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32 = _win_dll("kernel32")
         idle = FILETIME()
         kernel = FILETIME()
         user = FILETIME()

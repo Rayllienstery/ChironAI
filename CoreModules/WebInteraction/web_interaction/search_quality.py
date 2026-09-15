@@ -161,9 +161,7 @@ def is_homepage(url: str) -> bool:
     parts = _path_parts(url)
     if not parts:
         return True
-    if len(parts) == 1 and parts[0].lower() in _HOME_PARTS:
-        return True
-    return False
+    return len(parts) == 1 and parts[0].lower() in _HOME_PARTS
 
 
 def _host_match(host: str, needles: tuple[str, ...]) -> bool:
@@ -220,9 +218,7 @@ def is_low_url(url: str) -> bool:
         parts = _path_parts(url)
         if not parts or parts[0] not in {"questions", "q", "a"}:
             return True
-    if h == "youtube.com" or h == "youtu.be":
-        return True
-    return False
+    return h == "youtube.com" or h == "youtu.be"
 
 
 def boost_points(url: str, extra_hosts: tuple[str, ...] = ()) -> int:

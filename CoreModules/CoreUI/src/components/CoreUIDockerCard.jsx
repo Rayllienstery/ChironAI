@@ -138,6 +138,7 @@ function ConfirmableAction({ action, idx, isLive, busy, activeAction, actionTime
  * @param {Object} [props.activeAction] - (Live mode) `{ id, label, startedAt }`.
  * @param {number} [props.actionTimerNow] - (Live mode) Timestamp ms for elapsed timer.
  * @param {string} [props.fieldKey='backend_url'] - (Live mode) Field key for the URL input. Empty string hides the field.
+ * @param {boolean} [props.showUrlField] - When false, hide the chat backend URL field even in demo mode.
  * @param {number} [props.metaColumns=3] - Metadata tile columns (2 or 3).
  */
 export default function CoreUIDockerCard({

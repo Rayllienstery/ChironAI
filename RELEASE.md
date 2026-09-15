@@ -2,9 +2,23 @@
 
 Short gate before tagging a release. Run from repo root unless noted.
 
+## Release candidate 0.10.40 notes
+
+Status: **released (Pre-Release Stable)** — tag `v0.10.40` (2026-09-15). Current **Latest** on GitHub for the active line; `v0.8.63` remains the last **STABLE** tag.
+
+Highlights (0.10.40):
+
+- **CI Quality Gate:** restore Win32/Hermes host unit tests, pyright-safe ctypes/`sysconf` typing, coverage omit for Win32-only process/CPU/RAM probes, npm GHSA allowlist refresh, and gitleaks-safe phone-host curl example.
+
+Verification snapshot (2026-09-15):
+
+- `pytest -m fast --cov=domain --cov=application --cov-fail-under=80` — 1187 passed; coverage 80.42%.
+- `pyright` on edited application modules — 0 errors.
+- `python scripts/check_version_drift.py` — passed (0.10.40).
+
 ## Release candidate 0.10.39 notes
 
-Status: **released (Pre-Release Stable)** — tag `v0.10.39` (2026-09-14). Current **Latest** on GitHub for the active line; `v0.8.63` remains the last **STABLE** tag.
+Status: **released (Pre-Release Stable)** — tag `v0.10.39` (2026-09-14). Previous **Latest** on GitHub for the active line; `v0.8.63` remains the last **STABLE** tag.
 
 Highlights (0.10.13–0.10.39):
 

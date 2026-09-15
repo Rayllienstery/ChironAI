@@ -510,7 +510,7 @@ class HermesRuntime:
         if not target:
             return
         try:
-            if sys.platform == "win32":
+            if sys.platform == "win32":  # pragma: no cover
                 os.startfile(target)  # nosec B606
             else:
                 import webbrowser
@@ -533,7 +533,8 @@ def bind_lifecycle_to_host() -> dict[str, Any]:
     runtime = HermesRuntime()
     result = runtime.ensure()
     ensure_dashboard = getattr(runtime, "ensure_dashboard", None)
-    dashboard = dict(ensure_dashboard() or {}) if callable(ensure_dashboard) else {}
+    raw_dashboard = ensure_dashboard() if callable(ensure_dashboard) else None
+    dashboard = raw_dashboard if isinstance(raw_dashboard, dict) else {}
     if result.get("ok"):
         _log.info("Hermes gateway bound to ChironAI host process")
     else:

@@ -34,6 +34,15 @@ def empty_managed_processes() -> list[dict[str, Any]]:
     ]
 
 
+def _win_dll(name: str) -> Any:
+    import ctypes
+
+    loader = getattr(ctypes, "WinDLL", None)
+    if loader is None:
+        raise OSError(f"WinDLL unavailable for {name}")
+    return loader(name, use_last_error=True)
+
+
 def _role_for_cmdline(cmdline: str) -> str | None:
     text = " ".join(str(cmdline or "").lower().replace("/", "\\").split())
     if "hermes" not in text:
@@ -45,13 +54,13 @@ def _role_for_cmdline(cmdline: str) -> str | None:
     return None
 
 
-def _windows_rss(pid: int) -> int:
+def _windows_rss(pid: int) -> int:  # pragma: no cover - Win32 RSS
     import ctypes
     from ctypes import wintypes
 
     PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    psapi = ctypes.WinDLL("psapi", use_last_error=True)
+    kernel32 = _win_dll("kernel32")
+    psapi = _win_dll("psapi")
     handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
     if not handle:
         return 0
@@ -89,14 +98,14 @@ def _windows_rss(pid: int) -> int:
         kernel32.CloseHandle(handle)
 
 
-def _windows_cmdline(pid: int) -> str:
+def _windows_cmdline(pid: int) -> str:  # pragma: no cover - NtQueryInformationProcess
     import ctypes
     from ctypes import wintypes
 
     PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
     ProcessCommandLineInformation = 60
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    ntdll = ctypes.WinDLL("ntdll", use_last_error=True)
+    kernel32 = _win_dll("kernel32")
+    ntdll = _win_dll("ntdll")
     handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
     if not handle:
         return ""
@@ -133,7 +142,7 @@ def _windows_cmdline(pid: int) -> str:
 
 def read_process_cmdline(pid: int) -> str:
     """Best-effort command line for a live process."""
-    if sys.platform == "win32":
+    if sys.platform == "win32":  # pragma: no cover - Win32 command line
         return _windows_cmdline(pid)
     try:
         raw = (Path("/proc") / str(pid) / "cmdline").read_bytes()
@@ -142,7 +151,7 @@ def read_process_cmdline(pid: int) -> str:
     return raw.replace(b"\x00", b" ").decode("utf-8", "replace").strip()
 
 
-def _windows_listener_pids() -> dict[int, int]:
+def _windows_listener_pids() -> dict[int, int]:  # pragma: no cover - iphlpapi listeners
     import ctypes
     import socket
     from ctypes import wintypes
@@ -160,7 +169,7 @@ def _windows_listener_pids() -> dict[int, int]:
     AF_INET = 2
     TCP_TABLE_OWNER_PID_ALL = 5
     MIB_TCP_STATE_LISTEN = 2
-    iphlpapi = ctypes.WinDLL("iphlpapi", use_last_error=True)
+    iphlpapi = _win_dll("iphlpapi")
     size = wintypes.DWORD(0)
     iphlpapi.GetExtendedTcpTable(None, ctypes.byref(size), True, AF_INET, TCP_TABLE_OWNER_PID_ALL, 0)
     if not size.value:
@@ -182,7 +191,7 @@ def _windows_listener_pids() -> dict[int, int]:
     return listeners
 
 
-def _iter_windows_processes() -> list[dict[str, Any]]:
+def _iter_windows_processes() -> list[dict[str, Any]]:  # pragma: no cover - Toolhelp32 snapshot
     import ctypes
     from ctypes import wintypes
 
@@ -202,7 +211,7 @@ def _iter_windows_processes() -> list[dict[str, Any]]:
             ("szExeFile", wintypes.WCHAR * 260),
         ]
 
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32 = _win_dll("kernel32")
     snapshot = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
     if snapshot == wintypes.HANDLE(-1).value:
         return []
@@ -237,7 +246,16 @@ def _iter_posix_processes() -> list[dict[str, Any]]:
     proc = Path("/proc")
     if not proc.is_dir():
         return []
-    page = int(os.sysconf("SC_PAGE_SIZE") or 4096)
+    page = 4096
+    sysconf = getattr(os, "sysconf", None)
+    if callable(sysconf):
+        try:
+            raw_page = sysconf("SC_PAGE_SIZE")
+            page = int(str(raw_page)) if raw_page is not None else 4096
+        except (TypeError, ValueError, OSError):
+            page = 4096
+        if page <= 0:
+            page = 4096
     rows: list[dict[str, Any]] = []
     for entry in proc.iterdir():
         if not entry.name.isdigit():
@@ -307,7 +325,10 @@ def collect_managed_processes(
 ) -> list[dict[str, Any]]:
     """OS snapshot of the host Hermes gateway and dashboard process trees."""
     try:
-        rows = _iter_windows_processes() if sys.platform == "win32" else _iter_posix_processes()
+        if sys.platform == "win32":  # pragma: no cover - Win32 snapshot
+            rows = _iter_windows_processes()
+        else:
+            rows = _iter_posix_processes()
     except Exception:
         _log.debug("Hermes process snapshot failed", exc_info=True)
         return empty_managed_processes()
@@ -316,7 +337,7 @@ def collect_managed_processes(
         role = _role_for_cmdline(str(row.get("cmdline") or ""))
         if role:
             grouped[role].append(row)
-    if sys.platform == "win32":
+    if sys.platform == "win32":  # pragma: no cover - listener fallback
         try:
             listeners = _windows_listener_pids()
         except Exception:

@@ -1,9 +1,16 @@
 /**
  * Task Manager-style area chart: filled series against a fixed or auto max.
+ * @param {object} props
+ * @param {number[]} props.data
+ * @param {number} [props.maxY]
+ * @param {string} [props.color]
+ * @param {number} [props.height]
+ * @param {string} [props.ariaLabel]
+ * @param {string} [props.className]
  */
 export default function PerformanceAreaChart({
   data,
-  maxY,
+  maxY = 0,
   color = "var(--md-sys-color-primary)",
   height = 168,
   ariaLabel,

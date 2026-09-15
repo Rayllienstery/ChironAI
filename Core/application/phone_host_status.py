@@ -31,6 +31,8 @@ def _trace_tokens(trace: dict[str, Any]) -> int | None:
     estimates = _as_dict(provider.get("tokens_estimates"))
     for key in ("completion_tokens_estimated", "total_tokens_estimated"):
         raw = estimates.get(key)
+        if raw is None:
+            continue
         try:
             number = int(raw)
         except (TypeError, ValueError):
