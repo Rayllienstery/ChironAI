@@ -26,7 +26,11 @@ app = create_app()
 print(json.dumps(build_openapi_spec(app), sort_keys=True))
 `;
 
-const generated = spawnSync('python', ['-c', pythonCode], {
+const venvPython = path.join(repoRoot, '.venv', 'bin', 'python');
+const pythonCommand = process.platform === 'win32'
+  ? 'python'
+  : existsSync(venvPython) ? venvPython : 'python3';
+const generated = spawnSync(pythonCommand, ['-c', pythonCode], {
   cwd: repoRoot,
   env: {
     ...process.env,

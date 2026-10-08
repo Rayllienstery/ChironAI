@@ -87,6 +87,7 @@ config.local.yaml
 /MEMORY.md
 /USER.md
 **/.hermes/
+/.github/skills/
 
 # Local agent dumps and host scratch (never commit)
 runtime/

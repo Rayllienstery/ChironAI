@@ -14,7 +14,7 @@ services:
       retries: 5
 
   ollama:
-    image: ollama/ollama:latest@sha256:f1a705f2bd113fb8d15f85f7c217f0dc5f6bebda6b0cc42b82c3ad165ffcb9dc
+    image: ollama/ollama:latest@sha256:2a6e883b917fc543389599dae79918f5cac9e1438890506982f44aa4f5625d01
     ports:
       - "${OLLAMA_PORT:-11434}:11434"
     volumes:

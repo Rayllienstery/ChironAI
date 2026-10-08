@@ -65,14 +65,16 @@ def needs_build() -> bool:
 
 
 def _ensure_dependencies() -> int:
-    vite_cmd = FRONTEND / "node_modules" / ".bin" / "vite.cmd"
-    if vite_cmd.is_file():
+    npm_command = "npm.cmd" if os.name == "nt" else "npm"
+    vite_name = "vite.cmd" if os.name == "nt" else "vite"
+    vite_cmd = FRONTEND / "node_modules" / ".bin" / vite_name
+    if vite_cmd.is_file() and (os.name == "nt" or os.access(vite_cmd, os.X_OK)):
         return 0
 
     print("Front-end dependencies are not installed; installing from package-lock.json...")
     print()
     lock = FRONTEND / "package-lock.json"
-    cmd = ["npm.cmd", "ci"] if lock.is_file() else ["npm.cmd", "install"]
+    cmd = [npm_command, "ci"] if lock.is_file() else [npm_command, "install"]
     result = subprocess.run(cmd, cwd=FRONTEND, check=False)
     if result.returncode != 0:
         print()
@@ -101,7 +103,8 @@ def main() -> int:
 
     print("CoreUI sources changed or dist is missing; running npm run build...")
     print()
-    result = subprocess.run(["npm.cmd", "run", "build"], cwd=FRONTEND, check=False)
+    npm_command = "npm.cmd" if os.name == "nt" else "npm"
+    result = subprocess.run([npm_command, "run", "build"], cwd=FRONTEND, check=False)
     return result.returncode
 
 

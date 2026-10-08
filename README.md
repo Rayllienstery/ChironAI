@@ -62,6 +62,7 @@
    ```
 5. Build the frontend and start the server:
    - **Windows:** `build_and_run.bat`
+   - **macOS:** `bash build_and_run.sh`
    - **Manual:** `npm run build` in `CoreModules/CoreUI`, then `start_webui.bat` (Windows) or start the Flask app from the repo root.
 6. Open [http://127.0.0.1:8080/webui](http://127.0.0.1:8080/webui).
 

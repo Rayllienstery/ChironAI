@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
 from llm_interactor.discovery import load_manifest_from_dir, validate_extension_backend_docker_policy
 
 from llm_interactor import LLMRequest, ProviderHostContext
@@ -16,6 +17,16 @@ def _load_ollama_provider_module():
     root = Path(__file__).resolve().parents[2]
     path = root / "extensions" / "bundled" / "ollama-provider" / "backend" / "provider.py"
     spec = importlib.util.spec_from_file_location("test_ollama_provider_backend", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_ollama_http_module():
+    root = Path(__file__).resolve().parents[2]
+    path = root / "extensions" / "bundled" / "ollama-provider" / "backend" / "ollama_http.py"
+    spec = importlib.util.spec_from_file_location("test_ollama_http_backend", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -85,6 +96,69 @@ def test_ollama_extension_http_helper_is_self_contained() -> None:
     assert not re.search(r"^\s*(?:from|import)\s+infrastructure\b", text, re.MULTILINE)
     assert not re.search(r"^\s*(?:from|import)\s+api\b", text, re.MULTILINE)
     assert not re.search(r"^\s*(?:from|import)\s+rag_service\b", text, re.MULTILINE)
+
+
+def test_ollama_cloud_chat_forbidden_response_is_retried(monkeypatch: Any) -> None:
+    module = _load_ollama_http_module()
+    monkeypatch.setattr(module, "_ollama_interactor_http_module", lambda: None)
+    monkeypatch.setenv("OLLAMA_CHAT_MAX_RETRIES", "1")
+    monkeypatch.setenv("OLLAMA_CHAT_RETRY_BASE_SEC", "0")
+    monkeypatch.setattr(module.time, "sleep", lambda _delay: None)
+    responses = []
+    for status, body in (
+        (403, b"<h1>Error: Forbidden</h1>Your client does not have permission to get URL /api/chat"),
+        (200, b'{"message":{"content":"OK"}}'),
+    ):
+        response = module.requests.Response()
+        response.status_code = status
+        response._content = body
+        response.url = "http://localhost:11434/api/chat"
+        responses.append(response)
+
+    calls = []
+
+    def fake_request(method: str, url: str, **kwargs: Any):
+        calls.append((method, url, kwargs))
+        return responses.pop(0)
+
+    monkeypatch.setattr(module.requests, "request", fake_request)
+
+    result = module.invoke_raw_json(
+        base_url="http://localhost:11434",
+        api_segment="chat",
+        body={"model": "glm-5.3-flash:cloud", "messages": [], "stream": False},
+    )
+
+    assert result == {"message": {"content": "OK"}}
+    assert len(calls) == 2
+
+
+def test_ordinary_ollama_auth_403_is_not_retried(monkeypatch: Any) -> None:
+    module = _load_ollama_http_module()
+    monkeypatch.setattr(module, "_ollama_interactor_http_module", lambda: None)
+    monkeypatch.setenv("OLLAMA_CHAT_MAX_RETRIES", "2")
+    response = module.requests.Response()
+    response.status_code = 403
+    response._content = b'{"error":"invalid API key"}'
+    response.url = "http://localhost:11434/api/chat"
+    calls = []
+
+    def fake_request(method: str, url: str, **kwargs: Any):
+        calls.append((method, url, kwargs))
+        return response
+
+    monkeypatch.setattr(module.requests, "request", fake_request)
+
+    with pytest.raises(module.requests.HTTPError):
+        module.invoke_raw_json(
+            base_url="http://localhost:11434",
+            api_segment="chat",
+            body={"model": "glm-5.3-flash:cloud", "messages": [], "stream": False},
+        )
+
+    assert len(calls) == 1
+
+
 
 
 def test_bundled_ollama_provider_backend_satisfies_docker_policy() -> None:

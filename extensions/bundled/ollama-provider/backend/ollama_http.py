@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -26,6 +27,12 @@ class OllamaHttpError(Exception):
         super().__init__(message)
         self.stderr = stderr
         self.returncode = returncode
+
+
+_OLLAMA_CLOUD_CHAT_FORBIDDEN_RE = re.compile(
+    r"does not have permission to get URL.{0,80}/api/chat",
+    re.IGNORECASE | re.DOTALL,
+)
 
 
 def _find_repo_root() -> str | None:
@@ -323,6 +330,9 @@ def _requests_error_is_transient(exc: BaseException) -> bool:
     status_code = getattr(response, "status_code", None)
     if status_code in (500, 502, 503, 504):
         return True
+    if status_code == 403:
+        body = str(getattr(response, "text", "") or "")
+        return bool(_OLLAMA_CLOUD_CHAT_FORBIDDEN_RE.search(body))
     blob = str(exc).lower()
     if "timeout" in blob:
         return True
